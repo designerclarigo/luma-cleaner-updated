@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-warm-ivory: #F8F7F3;
+    --surface-white: #FFFFFF;
+    --primary-ink: #18231F;
+    --brand-forest: #244D3F;
+    --accent-lime: #DCE8B0;
+    --secondary-text: #737B75;
+    --border-light: #E6E9E2;
+    --keep-green: #2D8060;
+    --delete-red: #C86462;
+  }
+
+  body {
+    background-color: #F8F7F3;
+    color: #18231F;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom scrollbar for clean editorial look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #E6E9E2;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #737B75;
+}
+
+/* Utility classes for Luma design tokens */
+.bg-warm-ivory { background-color: #F8F7F3; }
+.bg-surface { background-color: #FFFFFF; }
+.text-primary-ink { color: #18231F; }
+.text-secondary-ink { color: #737B75; }
+.border-subtle { border-color: #E6E9E2; }
+.bg-brand-forest { background-color: #244D3F; }
+.text-brand-forest { color: #244D3F; }
+.bg-accent-lime { background-color: #DCE8B0; }
+.text-accent-lime { color: #DCE8B0; }
+.text-keep-green { color: #2D8060; }
+.bg-keep-green { background-color: #2D8060; }
+.text-delete-red { color: #C86462; }
+.bg-delete-red { background-color: #C86462; }

@@ -1,0 +1,8 @@
+{
+  "name": "Luma — Gallery Cleaner",
+  "description": "Make room for memories. A polished, native-grade gallery cleaner with swipe gestures, safety review, and offline privacy.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+coverage/
+.expo/
+.publish/
+.repair-baseline/
+.DS_Store
+*.log
+*.jks
+*.keystore
+credentials.json
+.env*
+!.env.example

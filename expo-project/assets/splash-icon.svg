@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="haloGrad" cx="60%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="#DCE8B0" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#DCE8B0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Clean transparent background for splash screen icon overlay -->
+  <circle cx="560" cy="460" r="300" fill="url(#haloGrad)"/>
+
+  <g transform="translate(256, 256) scale(10.666)">
+    <circle cx="28" cy="18" r="14" fill="#DCE8B0" fill-opacity="0.35" />
+
+    <path
+      d="M 28 6 H 14 C 9.58 6 6 9.58 6 14 V 34 C 6 38.42 9.58 42 14 42 H 34 C 38.42 42 42 38.42 42 34 V 20"
+      stroke="#244D3F"
+      stroke-width="3.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+
+    <path
+      d="M 28 6 L 42 20"
+      stroke="#2D8060"
+      stroke-width="3"
+      stroke-linecap="round"
+      stroke-dasharray="1 5"
+      fill="none"
+    />
+
+    <circle
+      cx="22"
+      cy="26"
+      r="6"
+      stroke="#244D3F"
+      stroke-width="2.5"
+      fill="none"
+    />
+    <circle
+      cx="24"
+      cy="24"
+      r="2.5"
+      fill="#2D8060"
+    />
+  </g>
+</svg>

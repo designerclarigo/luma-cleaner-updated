@@ -1,0 +1,67 @@
+{
+  "name": "luma-gallery-cleaner",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "start:dev-client": "expo start --dev-client --tunnel --max-workers 2",
+    "start:expo-go": "expo start --go --tunnel --max-workers 2",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "doctor": "npx expo-doctor",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs",
+    "export:android": "expo export --platform android --output-dir dist/android --max-workers 2",
+    "export:web": "expo export --platform web --output-dir dist/web --max-workers 2",
+    "build:dev:android": "npx --yes eas-cli@25.2.0 build -p android --profile development",
+    "build:preview:android": "npx --yes eas-cli@25.2.0 build -p android --profile preview",
+    "build:dev:ios": "npx --yes eas-cli@25.2.0 build -p ios --profile development"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~57.0.30",
+    "expo-constants": "~57.0.22",
+    "expo-dev-client": "~57.0.20",
+    "expo-file-system": "~57.0.7",
+    "expo-font": "~57.0.4",
+    "expo-haptics": "~57.0.3",
+    "expo-image": "~57.0.5",
+    "expo-image-picker": "~57.0.20",
+    "expo-linear-gradient": "~57.0.2",
+    "expo-linking": "~57.0.13",
+    "expo-media-library": "~57.0.5",
+    "expo-router": "~57.0.28",
+    "expo-splash-screen": "~57.0.10",
+    "expo-status-bar": "~57.0.1",
+    "expo-system-ui": "~57.0.4",
+    "expo-video": "~57.0.5",
+    "lucide-react-native": "^1.59.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@expo/ngrok": "4.1.3",
+    "@types/react": "~19.2.0",
+    "babel-preset-expo": "~57.0.16",
+    "typescript": "6.0.3"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "11.1.1"
+    },
+    "@expo/ngrok": {
+      "uuid": "11.1.1"
+    }
+  },
+  "private": true
+}

@@ -1,0 +1,82 @@
+{
+  "expo": {
+    "name": "Luma",
+    "slug": "luma-gallery-cleaner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "luma",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.luma.cleaner",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Luma needs access to your photos and videos to organize, preview, and clean up storage on your device.",
+        "NSPhotoLibraryAddUsageDescription": "Luma requires permission to manage media files during cleanup sessions."
+      }
+    },
+    "android": {
+      "package": "com.luma.cleaner",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F8F7F3"
+      },
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Luma needs access to your gallery to help you swipe, review, and delete unwanted photos.",
+          "savePhotosPermission": "Luma needs permission to save cleaned albums.",
+          "isAccessMediaLocationEnabled": true,
+          "granularPermissions": [
+            "photo",
+            "video"
+          ]
+        }
+      ],
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F8F7F3"
+        }
+      ],
+      "expo-font",
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": false,
+          "microphonePermission": false,
+          "photosPermission": "Choose photos and videos to review in Luma."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c1225fdc-c3d0-4c47-9aee-a31c9c09289e"
+      }
+    },
+    "owner": "ayuglows-team"
+  }
+}
