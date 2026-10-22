@@ -44,7 +44,7 @@ interface HomeScreenProps {
   bytesReclaimed: number;
   permissionState?: 'granted' | 'limited' | 'denied';
   onOpenSettings?: () => void;
-  onReplenishDemo?: () => void;
+  onNativeRequired?: () => void;
   onImportMedia?: () => void;
 }
 
@@ -59,7 +59,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   bytesReclaimed,
   permissionState = 'granted',
   onOpenSettings,
-  onReplenishDemo,
+  onNativeRequired,
   onImportMedia,
 }) => {
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'uncleaned' | 'completed'>('all');
@@ -82,24 +82,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  const handleLoadDemoPhotos = () => {
-    if (onReplenishDemo) {
-      onReplenishDemo();
-      showToast('✓ 55+ high-res photos loaded! Ready to swipe & clean.');
-    }
-  };
-
-  const handleAddMorePhotos = () => {
-    const total = mediaService.addMoreSamplePhotos();
-    if (onReplenishDemo) onReplenishDemo();
-    showToast(`✓ Added 15 fresh photos! Total: ${total} photos.`);
-  };
-
-  const handleResetCompleted = () => {
-    mediaService.resetCompletedCollections();
-    if (onReplenishDemo) onReplenishDemo();
-    showToast('✓ All month stacks unlocked for swiping!');
-  };
+  const handleNativeRequired = () => onNativeRequired?.();
 
   // Time-based greeting
   const getGreeting = () => {
@@ -119,10 +102,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       clutter = mediaService.getRecents(20);
     }
     if (clutter.length === 0) {
-      // If gallery is completely empty, replenish immediately!
-      mediaService.replenishDemoMedia();
-      if (onReplenishDemo) onReplenishDemo();
-      clutter = mediaService.getRecents(20);
+      handleNativeRequired();
+      return;
     }
 
     if (clutter.length > 0) {
@@ -161,15 +142,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     });
 
     if (monthItems.length === 0) {
-      // If empty or completed, load demo and retry
-      mediaService.replenishDemoMedia();
-      if (onReplenishDemo) onReplenishDemo();
-      const freshAll = mediaService.getAllMedia();
-      monthItems = freshAll.filter((it) => {
-        const d = new Date(it.creationTime);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        return key === col.key;
-      });
+      handleNativeRequired();
+      return;
     }
 
     if (monthItems.length > 0) {
@@ -197,28 +171,26 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   return (
     <div className="space-y-6 pb-28 pt-2">
-      {/* Permission alert banner if simulated denied or limited */}
+      {/* Native gallery access is unavailable in a browser. */}
       {permissionState !== 'granted' && (
         <div className="mx-4 p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
             <div className="text-xs">
               <span className="font-bold text-[#18231F] block">
-                {permissionState === 'denied' ? 'Photo Access Denied' : 'Limited Access Active'}
+                Use the native app
               </span>
               <span className="text-[#737B75] text-[11px]">
-                {permissionState === 'denied'
-                  ? 'Grant photo access to scan your full library.'
-                  : 'Only selected photos are visible.'}
+                Connect your device photo library on Android or iOS.
               </span>
             </div>
           </div>
           {onOpenSettings && (
             <button
-              onClick={onOpenSettings}
+              onClick={handleNativeRequired}
               className="px-3 py-1.5 bg-[#244D3F] text-white text-[11px] font-bold rounded-xl shrink-0 cursor-pointer hover:bg-[#18231F] transition-all"
             >
-              Fix in Settings
+              Use the native app
             </button>
           )}
         </div>
@@ -281,25 +253,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         </div>
 
-        {/* Prominent Sample Photos & Import Action Bar */}
+        {/* Device library access action */}
         <div className="mt-3.5 flex flex-wrap items-center gap-2">
           <button
-            onClick={handleLoadDemoPhotos}
+            onClick={handleNativeRequired}
             className="flex-1 min-w-[140px] min-h-[40px] px-3.5 py-2 bg-[#244D3F] hover:bg-[#18231F] text-white rounded-2xl shadow-xs flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer active:scale-97"
-            title="Load 55+ curated high-resolution photos across all categories"
+            title="Connect your photo library in the native app"
           >
             <Sparkles className="w-4 h-4 text-[#DCE8B0]" />
-            <span>Load 55+ Photos</span>
+            <span>Use the native app</span>
           </button>
 
-          <button
-            onClick={handleAddMorePhotos}
-            className="min-h-[40px] px-3 py-2 bg-white hover:bg-[#F8F7F3] border border-[#244D3F]/30 hover:border-[#244D3F] rounded-2xl shadow-2xs flex items-center justify-center gap-1.5 text-xs font-bold text-[#244D3F] transition-all cursor-pointer active:scale-97"
-            title="Add 15 extra fresh photos to test"
-          >
-            <Zap className="w-3.5 h-3.5 text-[#2D8060]" />
-            <span>+15 More</span>
-          </button>
 
           {onImportMedia && (
             <button
@@ -313,18 +277,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           )}
         </div>
 
-        {/* If gallery is ever low or empty, show urgent quick-seed alert */}
+        {/* Empty browser gallery */}
         {totalPhotosCount < 10 && (
           <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs text-amber-900 font-semibold">
               <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Only {totalPhotosCount} photos left. Tap to refill gallery!</span>
+              <span>Use the native app to see your photos.</span>
             </div>
             <button
-              onClick={handleLoadDemoPhotos}
+              onClick={handleNativeRequired}
               className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl cursor-pointer"
             >
-              Refill Now
+              Open native app
             </button>
           </div>
         )}
@@ -726,15 +690,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <div>
                   <p className="text-sm font-extrabold text-[#18231F]">No active collections</p>
                   <p className="text-xs text-[#737B75] mt-1">
-                    Your gallery is currently empty or all months are cleaned. Load sample photos to test swiping!
+                    Use the native app to connect your device photo library.
                   </p>
                 </div>
                 <button
-                  onClick={handleLoadDemoPhotos}
+                  onClick={handleNativeRequired}
                   className="px-5 py-2.5 bg-[#244D3F] hover:bg-[#18231F] text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-[#DCE8B0]" />
-                  <span>Load 55+ Sample Photos</span>
+                  <span>Use the native app</span>
                 </button>
               </div>
             ) : (

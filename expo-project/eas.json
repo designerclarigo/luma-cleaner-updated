@@ -11,6 +11,12 @@
         "buildType": "apk"
       }
     },
+    "development-simulator": {
+      "extends": "development",
+      "ios": {
+        "simulator": true
+      }
+    },
     "preview": {
       "developmentClient": false,
       "distribution": "internal",

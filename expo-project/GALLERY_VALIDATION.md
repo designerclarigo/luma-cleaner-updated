@@ -1,5 +1,7 @@
 # Gallery implementation and verification — 2026-10-21
 
+> Latest update: [22 October native gallery checks](NATIVE_GALLERY_CHECKS.md). This historical record describes the prior implementation and evidence.
+
 Expo 57.0.30, React Native 0.86.3, React/React DOM 19.2.3, expo-media-library 57.0.5, Reanimated 4.5.1 and Worklets 0.10.1 are retained. Dependency declarations and the existing lockfile are unchanged. Splash, onboarding, theme tokens, fonts and approved navigation remain intact.
 
 ## Implemented and checked

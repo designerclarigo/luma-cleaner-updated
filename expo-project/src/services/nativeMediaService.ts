@@ -23,7 +23,7 @@ export interface NativeMediaAsset {
   albumId?: string;
   albumName?: string;
   thumbnailUri?: string;
-  source?: "device" | "demo";
+  source?: "device";
   clusterTag?: string;
 }
 
@@ -42,6 +42,10 @@ export interface NativeMediaPage {
   unavailableCount?: number;
 }
 
+export type NativeGalleryPermission = MediaLibrary.PermissionResponse & {
+  allowedMediaTypes?: ("photo" | "video")[];
+};
+
 const STORAGE_KEYS = {
   SESSIONS: "@luma_native_sessions_v2",
   BOOKMARKS: "@luma_native_bookmarks_v2",
@@ -52,14 +56,15 @@ const STORAGE_KEYS = {
 
 export class NativeMediaService {
   static hapticsEnabled = true;
+  private static deleting = false;
   private static async mediaLibrary() {
     if (Platform.OS === "web")
-      throw new Error("Device gallery access requires the Android or iOS app.");
+      throw new Error("Use the native app. Gallery access and system deletion confirmation require Luma for Android or iOS.");
     // Some Expo Go clients lack SDK 57's class API. Check before evaluating the
     // module, which otherwise logs a native-module error even when caught.
     if (!requireOptionalNativeModule("ExpoMediaLibraryNext")) {
       throw new Error(
-        "This client does not include Luma’s gallery module. Install Luma’s development build to connect your gallery, or choose Demo mode to preview the app.",
+        "This client does not include Luma’s gallery module. Install Luma’s development build to connect your gallery.",
       );
     }
     return import("expo-media-library");
@@ -67,25 +72,38 @@ export class NativeMediaService {
   /**
    * Request native permission to access device media (Read & Write)
    */
-  static async requestPermissions(): Promise<MediaLibrary.PermissionResponse> {
+  static async requestPermissions(): Promise<NativeGalleryPermission> {
     const MediaLibrary = await this.mediaLibrary();
     const response = await MediaLibrary.requestPermissionsAsync(false, [
       "photo",
       "video",
     ]);
-    return response;
+    return this.withMediaTypes(MediaLibrary, response);
   }
 
   /**
    * Check current permission status without requesting
    */
-  static async getPermissions(): Promise<MediaLibrary.PermissionResponse> {
+  static async getPermissions(): Promise<NativeGalleryPermission> {
     const MediaLibrary = await this.mediaLibrary();
     const response = await MediaLibrary.getPermissionsAsync(false, [
       "photo",
       "video",
     ]);
-    return response;
+    return this.withMediaTypes(MediaLibrary, response);
+  }
+
+  private static async withMediaTypes(
+    library: typeof MediaLibrary,
+    response: MediaLibrary.PermissionResponse,
+  ): Promise<NativeGalleryPermission> {
+    // Android 13 can grant photos while denying videos (or vice versa).
+    // An aggregate denial must not hide the media category that is authorized.
+    if (Platform.OS !== "android" || Number(Platform.Version) < 33 || response.granted || response.accessPrivileges === "limited")
+      return response;
+    const kinds = ["photo", "video"] as const;
+    const checks = await Promise.all(kinds.map((kind) => library.getPermissionsAsync(false, [kind])));
+    return { ...response, allowedMediaTypes: kinds.filter((_, i) => checks[i].granted) };
   }
 
   static async subscribeToChanges(onChange: () => void): Promise<() => void> {
@@ -95,6 +113,8 @@ export class NativeMediaService {
   }
 
   static deletionUnavailableReason(): string {
+    if (Platform.OS !== "android" && Platform.OS !== "ios")
+      return "Use the native app. System photo deletion is available in Luma for Android or iOS.";
     // SDK 57's pre-Android-11 deleter deletes files directly and swallows per-file
     // failures. Never enter that path or report its batch as natively confirmed.
     return Platform.OS === "android" && Number(Platform.Version) < 30
@@ -111,6 +131,7 @@ export class NativeMediaService {
       after?: string;
       album?: MediaLibrary.Album | string;
       mediaType?: ("photo" | "video")[];
+      metadataOnly?: boolean;
     } = {},
   ): Promise<NativeMediaPage> {
     const first = options.first ?? 60;
@@ -143,6 +164,38 @@ export class NativeMediaService {
           ? new MediaLibrary.Album(options.album)
           : options.album,
       );
+    // Collection discovery must not resolve/download every iCloud original.
+    // expo-image can display ph:// and content:// asset IDs directly.
+    if (options.metadataOnly) {
+      const rows = await query.exeForMetadata();
+      const page = rows.slice(0, first);
+      return {
+        assets: page.map((info) => {
+          let fileSize: number | undefined;
+          if (Platform.OS === "android") {
+            try {
+              const size = new File(info.id).size;
+              if (typeof size === "number" && size > 0) fileSize = size;
+            } catch { /* Size unavailable; never invent reclaimed bytes. */ }
+          }
+          return {
+            id: info.id,
+            uri: info.id,
+            filename: info.filename || (info.mediaType === MediaLibrary.MediaType.VIDEO ? "Video" : "Photo"),
+            mediaType: info.mediaType === MediaLibrary.MediaType.VIDEO ? "video" as const : "photo" as const,
+            width: info.width ?? 0,
+            height: info.height ?? 0,
+            creationTime: info.creationTime ?? 0,
+            modificationTime: info.modificationTime ?? 0,
+            duration: info.duration == null ? undefined : info.duration / 1000,
+            fileSize,
+            source: "device" as const,
+          };
+        }),
+        hasNextPage: rows.length > first,
+        ...(page.length ? { endCursor: String(offset + page.length) } : {}),
+      };
+    }
     const rows = await query.exe();
     const page = rows.slice(0, first);
     const assets: NativeMediaAsset[] = [];
@@ -192,8 +245,8 @@ export class NativeMediaService {
 
   /**
    * Delete assets natively using the OS deletion dialog.
-   * On Android and iOS, this triggers the OS-level system prompt.
-   * Accurately distinguishes between confirmed deletion, user cancellation, and system failure.
+   * Android 11+: MediaStore.createDeleteRequest; iOS: PhotoKit performChanges.
+   * The OS owns approval and dialog presentation. Never delete filesystem copies.
    */
   static async deleteAssets(
     assetsToDelete: NativeMediaAsset[],
@@ -208,7 +261,6 @@ export class NativeMediaService {
     }
 
     // The native deletion boundary accepts only an explicitly device-only selection.
-    // Demo simulation lives in the explicitly labelled demo UI, never in this method.
     if (assetsToDelete.some((asset) => asset.source !== "device")) {
       return {
         success: false,
@@ -216,7 +268,7 @@ export class NativeMediaService {
         cancelled: false,
         bytesReclaimed: 0,
         error:
-          "Only device gallery assets can be deleted through the native library.",
+          "Use the native app with your device library. Sample media cannot be deleted or counted as reclaimed storage.",
       };
     }
     const unique = [
@@ -231,22 +283,58 @@ export class NativeMediaService {
         bytesReclaimed: 0,
         error: unsupported,
       };
+    if (this.deleting)
+      return { success: false, cancelled: false, deletedIds: [], bytesReclaimed: 0, error: "A system deletion request is already open. Finish it before trying again." };
+    this.deleting = true;
+    const confirmed: NativeMediaAsset[] = [];
+    let requestingApproval = false;
     try {
       const MediaLibrary = await this.mediaLibrary();
-      await MediaLibrary.Asset.delete(
-        unique.map((asset) => new MediaLibrary.Asset(asset.id)),
-      );
+      // Android 16+ caps each system request at 2,000 URIs. Stop on the first
+      // cancelled/failed batch, retaining receipts only for completed batches.
+      const batchSize = Platform.OS === "android" ? 2000 : unique.length;
+      for (let offset = 0; offset < unique.length; offset += batchSize) {
+        requestingApproval = false;
+        const batch = unique.slice(offset, offset + batchSize);
+        const permission = await this.getPermissions();
+        if (!permission.granted && permission.accessPrivileges !== "limited" && !permission.allowedMediaTypes?.length)
+          throw new Error("Photo access has changed. Manage photo access in Settings, refresh your gallery, and review again.");
+        if (permission.allowedMediaTypes && batch.some((asset) => !permission.allowedMediaTypes!.includes(asset.mediaType)))
+          throw new Error("Some selected photos or videos are no longer authorized. Manage photo access, refresh your gallery, and review again.");
+        // iOS's batch deleter otherwise silently omits unavailable identifiers.
+        // This metadata lookup does not download iCloud originals. On Android,
+        // getMediaType derives from the URI, so the OS request validates access.
+        const originals = batch.map((asset) => new MediaLibrary.Asset(asset.id));
+        if (Platform.OS === "ios") {
+          for (let start = 0; start < originals.length; start += 8) {
+            const types = await Promise.all(originals.slice(start, start + 8).map((asset) => asset.getMediaType()));
+            if (types.some((type) => type !== MediaLibrary.MediaType.IMAGE && type !== MediaLibrary.MediaType.VIDEO))
+              throw new Error("Some selected originals are unavailable. Refresh your gallery and review again.");
+          }
+        }
+        requestingApproval = true;
+        await MediaLibrary.Asset.delete(originals);
+        confirmed.push(...batch);
+      }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // SDK 57 Android emits this exact message on RESULT_CANCELED. iOS
+      // exposes PhotoKit's NSError description through Expo's exception chain.
+      // Permission errors and unknown native failures must not become cancellations.
+      const cancelled = requestingApproval && (
+        (Platform.OS === "android" && message.includes("User didn't grant write permission to requested files.")) ||
+        (Platform.OS === "ios" && /PHPhotosErrorDomain[^\n]*\b3072\b/.test(message))
+      );
       return {
         success: false,
-        deletedIds: [],
-        cancelled: true,
-        bytesReclaimed: 0,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Native deletion was cancelled or could not complete.",
+        deletedIds: confirmed.map((asset) => asset.id),
+        cancelled,
+        bytesReclaimed: confirmed.reduce((sum, asset) => sum + (asset.fileSize ?? 0), 0),
+        error: (confirmed.length ? `${confirmed.length} items were deleted in earlier approved batches. ` : "") +
+          (cancelled ? "Deletion was cancelled. The remaining items are still marked for review." : `Deletion could not complete. ${message}`),
       };
+    } finally {
+      this.deleting = false;
     }
     await this.triggerHaptic("success");
     return {
@@ -416,6 +504,15 @@ export class NativeMediaService {
     await library.presentPermissionsPicker(["photo", "video"]);
   }
 
+  /** Resolve just the active iOS video; image thumbnails use the Photos loader. */
+  static async getPlayableUri(asset: Pick<NativeMediaAsset, "id" | "uri" | "source">): Promise<string> {
+    if (asset.source === "device" && Platform.OS === "ios" && asset.uri.startsWith("ph://")) {
+      const library = await this.mediaLibrary();
+      return new library.Asset(asset.id).getUri();
+    }
+    return asset.uri;
+  }
+
   static selectOriginals(
     catalog: NativeMediaAsset[],
     picked: { assetId?: string | null; type?: string | null }[],
@@ -433,6 +530,10 @@ export class NativeMediaService {
                 : undefined;
           if (kind && kind !== asset.mediaType) return false;
           if (selection.assetId === asset.id) return true;
+          // ImagePicker returns PHAsset.localIdentifier without the SDK's ph:// prefix.
+          if (Platform.OS === "ios" &&
+            selection.assetId.replace(/^ph:\/\//, "") === asset.id.replace(/^ph:\/\//, ""))
+            return true;
           // ImagePicker returns a numeric MediaStore ID on Android; SDK 57's Asset
           // uses the original content URI. Never substitute the picker's cached copy.
           const id =
@@ -503,11 +604,10 @@ export class NativeMediaService {
    */
   static async saveBookmarks(
     ids: string[],
-    mode: "device" | "demo" = "device",
   ): Promise<void> {
     try {
       await AsyncStorage.setItem(
-        mode === "demo" ? "@luma_demo_bookmarks_v2" : STORAGE_KEYS.BOOKMARKS,
+        STORAGE_KEYS.BOOKMARKS,
         JSON.stringify(ids),
       );
     } catch (e) {
@@ -518,14 +618,12 @@ export class NativeMediaService {
   /**
    * Retrieve bookmarks (migrating legacy storage if present)
    */
-  static async getBookmarks(
-    mode: "device" | "demo" = "device",
-  ): Promise<string[]> {
+  static async getBookmarks(): Promise<string[]> {
     try {
       let raw = await AsyncStorage.getItem(
-        mode === "demo" ? "@luma_demo_bookmarks_v2" : STORAGE_KEYS.BOOKMARKS,
+        STORAGE_KEYS.BOOKMARKS,
       );
-      if (!raw && mode === "device") {
+      if (!raw) {
         raw = await AsyncStorage.getItem(STORAGE_KEYS.LEGACY_BOOKMARKS);
         if (raw) {
           await AsyncStorage.setItem(STORAGE_KEYS.BOOKMARKS, raw);

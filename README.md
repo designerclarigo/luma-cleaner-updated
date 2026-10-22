@@ -2,7 +2,7 @@
 
 Luma combines a forest-green and ivory interface with photo swiping, bookmarks, saved cleanup progress, and review before deletion.
 
-- `expo-project/` contains the native React Native app on **Expo SDK 57.0.30**, React Native **0.86.3**, and React **19.2.3**.
+- `expo-project/` contains the native React Native app on **Expo SDK 57.0.31**, React Native **0.86.3**, and React **19.2.3**.
 - The root `src/` contains the approved Vite web preview. The native app uses React Native components, without a WebView.
 
 ## Native app — PowerShell
@@ -11,10 +11,10 @@ Luma combines a forest-green and ivory interface with photo swiping, bookmarks, 
 git clone https://github.com/designerclarigo/Luma-Gallery-Cleaner.git
 Set-Location .\Luma-Gallery-Cleaner\expo-project
 npm.cmd ci
-npx.cmd expo start --go --tunnel --max-workers 2
+npx.cmd expo start --dev-client --tunnel --max-workers 1
 ```
 
-Scan the QR code in Expo Go to preview the screens. Full gallery access requires a Luma development or standalone preview APK containing the native gallery module. Demo mode is an explicit choice; gallery failures do not load sample photos automatically.
+Install a Luma development build and scan its Metro QR code. Gallery access requires that native build or a standalone preview APK. Sample catalogs, demo controls and simulated deletion are removed. Web shows **Use the native app** and cannot grant gallery permission or impersonate OS deletion confirmation.
 
 ## Android APKs
 
@@ -35,7 +35,7 @@ npm.cmd run start:dev-client
 
 Swiping left only marks media. Deletion requires review and native confirmation. With the current SDK implementation, Luma disables deletion on Android 10 and older; supported native confirmation requires Android 11+ or iOS.
 
-See [native setup and installation](expo-project/README.md) and [actual gallery validation](expo-project/GALLERY_VALIDATION.md) for build status and device-testing limits.
+See [Android and iOS native setup](expo-project/NATIVE_GALLERY_SETUP.md) and [actual gallery checks](expo-project/NATIVE_GALLERY_CHECKS.md) for build status and device-testing limits.
 
 ## Web preview — PowerShell
 

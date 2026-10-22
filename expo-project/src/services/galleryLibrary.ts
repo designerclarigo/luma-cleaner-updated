@@ -1,6 +1,6 @@
 import type { NativeMediaAsset, NativeMediaPage } from "./nativeMediaService";
 
-export type GalleryMode = "device" | "demo";
+export type GalleryMode = "device";
 export type GalleryStatus =
   | "loading"
   | "ready"
@@ -17,11 +17,13 @@ export interface GallerySnapshot {
   limited: boolean;
   canAskAgain: boolean;
   refreshing: boolean;
+  mediaTypes: ("photo" | "video")[];
 }
 interface PermissionResult {
   granted: boolean;
   accessPrivileges?: string;
   canAskAgain: boolean;
+  allowedMediaTypes?: ("photo" | "video")[];
 }
 interface GalleryDriver {
   getPermissions(): Promise<PermissionResult>;
@@ -29,10 +31,12 @@ interface GalleryDriver {
   getAssets(options: {
     first: number;
     after?: string;
+    metadataOnly?: boolean;
+    mediaType?: ("photo" | "video")[];
   }): Promise<NativeMediaPage>;
 }
 
-/** Device errors always produce an honest state; samples require an explicit action. */
+/** The gallery contains authorized device originals only, never sample media. */
 export class GalleryLibrary {
   private generation = 0;
   private listeners = new Set<() => void>();
@@ -45,11 +49,11 @@ export class GalleryLibrary {
     limited: false,
     canAskAgain: true,
     refreshing: false,
+    mediaTypes: ["photo", "video"],
   };
   constructor(
     private driver: GalleryDriver,
     private platform: string,
-    private demo: NativeMediaAsset[],
   ) {}
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => {
@@ -61,19 +65,6 @@ export class GalleryLibrary {
   private publish(snapshot: GallerySnapshot) {
     this.snapshot = snapshot;
     this.listeners.forEach((listener) => listener());
-  }
-  useDemo() {
-    this.generation++;
-    this.publish({
-      mode: "demo",
-      status: "ready",
-      media: this.demo.map((asset) => ({ ...asset, source: "demo" })),
-      message: "Demo mode uses sample photos. Your device gallery is separate.",
-      granted: false,
-      limited: false,
-      canAskAgain: true,
-      refreshing: false,
-    });
   }
   removeDeleted(ids: string[]) {
     if (!ids.length) return;
@@ -115,6 +106,7 @@ export class GalleryLibrary {
           limited: false,
           canAskAgain: true,
           refreshing: true,
+          mediaTypes: ["photo", "video"],
         };
     this.publish(next);
     if (this.platform !== "android" && this.platform !== "ios") {
@@ -123,7 +115,7 @@ export class GalleryLibrary {
         refreshing: false,
         status: "unsupported",
         message:
-          "Device gallery access requires the Android or iOS app. You can explicitly try sample photos in demo mode.",
+          "Use the native app. Your real photo library and system deletion confirmation require Luma for Android or iOS.",
       });
       return;
     }
@@ -135,10 +127,14 @@ export class GalleryLibrary {
       next = {
         ...next,
         granted:
-          permission.granted || permission.accessPrivileges === "limited",
+          permission.granted || permission.accessPrivileges === "limited" || !!permission.allowedMediaTypes?.length,
         limited: permission.accessPrivileges === "limited",
         canAskAgain: permission.canAskAgain,
+        mediaTypes: permission.allowedMediaTypes ?? ["photo", "video"],
       };
+      // Full-to-limited access must never retain previously authorized originals.
+      const retainCatalog = retain && !next.limited && previous.mediaTypes.join() === next.mediaTypes.join();
+      if (!retainCatalog) next = { ...next, media: [], status: "loading" };
       if (!next.granted) {
         this.publish({
           ...next,
@@ -153,7 +149,7 @@ export class GalleryLibrary {
       }
       this.publish({
         ...next,
-        message: retain
+        message: retainCatalog
           ? previous.message
           : next.limited
             ? "Loading the photos you selected…"
@@ -164,11 +160,20 @@ export class GalleryLibrary {
       let after: string | undefined;
       let unavailable = 0;
       for (;;) {
-        const page = await this.driver.getAssets({ first: 100, after });
+        const page = await this.driver.getAssets({ first: 100, after, metadataOnly: true, mediaType: next.mediaTypes });
         if (generation !== this.generation) return;
         for (const asset of page.assets)
           assets.set(asset.id, { ...asset, source: "device" });
         unavailable += page.unavailableCount ?? 0;
+        if (!retainCatalog && assets.size && page.hasNextPage) {
+          this.publish({
+            ...next,
+            media: [...assets.values()],
+            status: "ready",
+            refreshing: true,
+            message: `Loading more of your library… ${assets.size} items loaded.`,
+          });
+        }
         if (!page.hasNextPage) break;
         if (!page.endCursor || cursors.has(page.endCursor))
           throw new Error(
@@ -191,6 +196,8 @@ export class GalleryLibrary {
           ? `${unavailable} item(s) could not be loaded. Retry to check again.`
           : next.limited
             ? "Showing only the photos and videos you allowed."
+            : next.mediaTypes.length === 1
+              ? `Showing ${next.mediaTypes[0] === "photo" ? "photos" : "videos"} only. Manage photo access in Settings to include ${next.mediaTypes[0] === "photo" ? "videos" : "photos"}.`
             : media.length
               ? ""
               : "No photos or videos are available in your permitted library.",

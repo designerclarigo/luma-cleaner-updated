@@ -109,12 +109,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   const handleCyclePermission = () => {
-    const nextState: Record<AppSettings['permissionState'], AppSettings['permissionState']> = {
-      granted: 'limited',
-      limited: 'denied',
-      denied: 'granted',
-    };
-    onUpdateSettings({ permissionState: nextState[settings.permissionState] });
+    window.alert('Use the native app. Photo permissions are managed by Android or iOS.');
   };
 
   const handleClearCache = () => {
@@ -608,14 +603,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <div className="pt-2 space-y-2">
                 <button
                   onClick={() => {
-                    mediaService.replenishDemoMedia();
-                    onResetAllData();
-                    onClose();
+                    window.alert('Use the native app to connect your device photo library.');
                   }}
                   className="w-full py-3 px-4 bg-[#244D3F] hover:bg-[#18231F] text-white font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                 >
                   <Sparkles className="w-4 h-4 text-[#DCE8B0]" />
-                  <span>Replenish 55+ Fresh Photos</span>
+                  <span>Use the native app</span>
                 </button>
 
                 {!showResetConfirm ? (
@@ -624,14 +617,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     className="w-full py-3 px-4 bg-red-50 hover:bg-red-100 text-[#C86462] font-bold text-xs rounded-2xl border border-red-200/80 transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    <span>Reset Demo Library & Stats</span>
+                    <span>Reset Local Records & Stats</span>
                   </button>
                 ) : (
                   <div className="p-4 bg-red-50 border border-red-200 rounded-2xl space-y-3">
                     <div className="flex items-start gap-2 text-red-900">
                       <AlertTriangle className="w-4 h-4 text-[#C86462] shrink-0 mt-0.5" />
                       <p className="text-[11px] font-semibold leading-tight">
-                        Reset will restore original demo photos, clear bookmarks, and reset your streak.
+                        Reset clears this browser’s Luma records. It never changes your device gallery.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -945,7 +938,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     5. Local Cache Control & Erasure
                   </h4>
                   <p className="text-[11px] leading-relaxed">
-                    Temporary indexed previews are stored in your device's sandboxed local cache. You can wipe this cache anytime with one tap under Settings &gt; Data &amp; Storage Cache, or reset all demo data completely.
+                    Device photo access is available in the native app. This browser does not access your system gallery.
                   </p>
                 </div>
               </div>

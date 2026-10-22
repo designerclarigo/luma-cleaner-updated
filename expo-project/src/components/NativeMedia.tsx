@@ -7,12 +7,33 @@ import { Film, ImageOff } from "lucide-react-native";
 import type { MediaItem } from "../core/model";
 import { Button, Text, ui } from "./NativeUI";
 import { colors as c } from "../theme/colors";
+import { NativeMediaService } from "../services/nativeMediaService";
 
 function Video({ item }: { item: MediaItem }) {
   const [attempt, retry] = useState(0);
   return (
-    <VideoAttempt key={attempt} item={item} retry={() => retry((n) => n + 1)} />
+    <ResolvedVideo key={item.id + "-" + attempt} item={item} retry={() => retry((n) => n + 1)} />
   );
+}
+function ResolvedVideo({ item, retry }: { item: MediaItem; retry: () => void }) {
+  const [uri, setUri] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void NativeMediaService.getPlayableUri({ id: item.id, uri: item.uri, source: item.source }).then(
+      (value) => { if (alive) setUri(value); },
+      () => { if (alive) setFailed(true); },
+    );
+    return () => { alive = false; };
+  }, [item.id, item.uri, item.source]);
+  if (uri) return <VideoAttempt item={{ ...item, uri }} retry={retry} />;
+  return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 20 }}>
+    {failed ? <>
+      <Film size={28} color={c.muted} />
+      <Text style={{ textAlign: "center" }}>This video is unavailable. Check your connection or photo access.</Text>
+      <Button title="Retry video" onPress={retry} tone="white" />
+    </> : <><ActivityIndicator color={c.forest} /><Text>Loading video…</Text></>}
+  </View>;
 }
 function VideoAttempt({ item, retry }: { item: MediaItem; retry: () => void }) {
   const player = useVideoPlayer(item.uri, (player) => {

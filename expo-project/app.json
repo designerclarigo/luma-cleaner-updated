@@ -11,8 +11,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.luma.cleaner",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Luma needs access to your photos and videos to organize, preview, and clean up storage on your device.",
-        "NSPhotoLibraryAddUsageDescription": "Luma requires permission to manage media files during cleanup sessions."
+        "NSPhotoLibraryUsageDescription": "Luma uses your photos and videos for local cleanup reviews. You choose which items to keep or submit for system-confirmed deletion.",
+        "NSPhotoLibraryAddUsageDescription": "Allow Luma to update your photo library when you approve changes."
       }
     },
     "android": {
@@ -24,10 +24,15 @@
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.ACCESS_MEDIA_LOCATION",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+      ],
+      "blockedPermissions": [
+        "android.permission.MANAGE_EXTERNAL_STORAGE",
+        "android.permission.MANAGE_MEDIA",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.ACCESS_MEDIA_LOCATION"
       ]
     },
     "web": {
@@ -39,9 +44,10 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Luma needs access to your gallery to help you swipe, review, and delete unwanted photos.",
-          "savePhotosPermission": "Luma needs permission to save cleaned albums.",
-          "isAccessMediaLocationEnabled": true,
+          "photosPermission": "Luma uses your photos and videos for local cleanup reviews. You choose which items to keep or submit for system-confirmed deletion.",
+          "savePhotosPermission": "Allow Luma to update your photo library when you approve changes.",
+          "isAccessMediaLocationEnabled": false,
+          "preventAutomaticLimitedAccessAlert": true,
           "granularPermissions": [
             "photo",
             "video"
@@ -54,7 +60,7 @@
         {
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#F8F7F3"
+          "backgroundColor": "#FAF9F6"
         }
       ],
       "expo-font",

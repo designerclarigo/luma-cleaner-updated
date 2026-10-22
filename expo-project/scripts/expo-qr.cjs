@@ -4,7 +4,8 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const { toQR } = require('toqr');
 const address = process.argv[2];
-if (!address || !/^exp:\/\/[\w.:-]+$/.test(address)) throw new Error('Pass the exp:// address printed by Expo.');
+if (!address || !/^(exp:\/\/[\w.:-]+|exp\+luma-gallery-cleaner:\/\/expo-development-client\/\?url=https?%3A%2F%2F[\w.%-]+)$/i.test(address))
+  throw new Error('Pass the Expo Go or Luma development-client address printed by Metro.');
 const qr = toQR(address);
 const count = Math.sqrt(qr.length);
 const quiet = 4, scale = 10, size = (count + quiet * 2) * scale;
@@ -32,7 +33,7 @@ function chunk(type, data) {
 }
 const header = Buffer.alloc(13);
 header.writeUInt32BE(size, 0); header.writeUInt32BE(size, 4); header[8] = 8;
-const output = path.join(__dirname, '..', '.expo', 'expo-go-qr.png');
+const output = path.join(__dirname, '..', '.expo', address.startsWith('exp:') ? 'expo-go-qr.png' : 'development-qr.png');
 fs.mkdirSync(path.dirname(output), { recursive: true });
 fs.writeFileSync(output, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
   chunk('IHDR', header), chunk('IDAT', zlib.deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))]));

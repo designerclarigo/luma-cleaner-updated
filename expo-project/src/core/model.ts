@@ -1,6 +1,6 @@
 export type MediaKind = "photo" | "video";
 export type Decision = "keep" | "delete";
-export type LibraryMode = "device" | "demo";
+export type LibraryMode = "device";
 export type Permission =
   | "unknown"
   | "granted"
@@ -21,7 +21,7 @@ export interface MediaItem {
   fileSize?: number;
   albumId?: string;
   albumName: string;
-  source: "device" | "demo";
+  source: "device";
 }
 export interface Session {
   id: string;
@@ -77,6 +77,7 @@ export interface SavedState {
   mode: LibraryMode;
   settings: Settings;
   device: LibraryState;
+  /** Archived legacy metadata only; never used as a gallery or deletion source. */
   demo: LibraryState;
   deletionAttempt?: { mode: LibraryMode; sessionId: string; ids: string[] };
 }

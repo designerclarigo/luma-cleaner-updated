@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
+    "start:clean": "expo start --dev-client --tunnel --clear --port 8082 --max-workers 1",
     "start:dev-client": "expo start --dev-client --tunnel --max-workers 2",
     "start:expo-go": "expo start --go --tunnel --max-workers 2",
     "android": "expo run:android",
@@ -16,11 +17,12 @@
     "export:web": "expo export --platform web --output-dir dist/web --max-workers 2",
     "build:dev:android": "npx --yes eas-cli@25.2.0 build -p android --profile development",
     "build:preview:android": "npx --yes eas-cli@25.2.0 build -p android --profile preview",
-    "build:dev:ios": "npx --yes eas-cli@25.2.0 build -p ios --profile development"
+    "build:dev:ios": "npx --yes eas-cli@25.2.0 build -p ios --profile development",
+    "build:dev:ios:simulator": "npx --yes eas-cli@25.2.0 build -p ios --profile development-simulator"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~57.0.30",
+    "expo": "~57.0.31",
     "expo-constants": "~57.0.22",
     "expo-dev-client": "~57.0.20",
     "expo-file-system": "~57.0.7",
@@ -31,7 +33,7 @@
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.13",
     "expo-media-library": "~57.0.5",
-    "expo-router": "~57.0.28",
+    "expo-router": "~57.0.29",
     "expo-splash-screen": "~57.0.10",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",

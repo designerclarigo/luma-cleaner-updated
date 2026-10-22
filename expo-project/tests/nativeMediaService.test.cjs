@@ -20,10 +20,22 @@ function setup(os = "android", version = 35) {
     pickerCalls: [],
     nativeMediaAvailable: true,
     listeners: new Set(),
+    metadataRows: [],
+    uriCalls: [],
+    assetTypes: new Map(),
   };
   class Asset {
     constructor(id) {
       this.id = id;
+    }
+    async getMediaType() {
+      const type = state.assetTypes.get(this.id);
+      if (type instanceof Error) throw type;
+      return type ?? "image";
+    }
+    async getUri() {
+      state.uriCalls.push(this.id);
+      return "file://resolved-video.mov";
     }
     static async delete(assets) {
       state.deleted.push(assets.map((asset) => asset.id));
@@ -71,6 +83,9 @@ function setup(os = "android", version = 35) {
     async exe() {
       return state.rows;
     }
+    async exeForMetadata() {
+      return state.metadataRows;
+    }
   }
   const permissions = {
     granted: true,
@@ -110,6 +125,8 @@ function setup(os = "android", version = 35) {
       },
       async getPermissionsAsync(...args) {
         state.permissionCalls.push(args);
+        if (args[1]?.length === 1 && state.categoryPermissions)
+          return { ...permissions, granted: !!state.categoryPermissions[args[1][0]] };
         return permissions;
       },
       async presentPermissionsPicker(...args) {
@@ -406,6 +423,65 @@ test("one inaccessible/cloud asset does not discard the page or corrupt the curs
 
 const deviceAsset = (id, fileSize) => ({ id, source: "device", fileSize });
 
+test("lightweight discovery uses native IDs and never resolves iCloud originals", async () => {
+  const { service, state } = setup("ios");
+  state.metadataRows = [
+    { id: "ph://photo/L0/001", filename: "IMG.HEIC", mediaType: "image", width: 3000, height: 4000,
+      creationTime: 1750000000123, duration: null },
+    { id: "ph://video/L0/001", filename: null, mediaType: "video", width: null, height: null,
+      duration: 12000, creationTime: null },
+    { id: "ph://lookahead" },
+  ];
+  const page = await service.getAssets({ first: 2, metadataOnly: true });
+  assert.equal(page.hasNextPage, true);
+  assert.equal(page.endCursor, "2");
+  assert.equal(page.assets[0].uri, "ph://photo/L0/001");
+  assert.equal(page.assets[0].creationTime, 1750000000123);
+  assert.equal(page.assets[1].duration, 12);
+  assert.equal(page.assets[1].filename, "Video");
+  assert.equal(page.assets[1].width, 0);
+  assert.equal(page.assets[1].fileSize, undefined);
+  assert.deepEqual(state.uriCalls, []);
+});
+
+test("Android metadata pages measure available sizes without opening originals", async () => {
+  const { service, state } = setup();
+  const id = "content://media/external/images/media/18";
+  state.metadataRows = [{ id, filename: "IMG.jpg", mediaType: "image", width: 400, height: 300 }];
+  state.fileSizes.set(id, 2048);
+  const page = await service.getAssets({ metadataOnly: true });
+  assert.equal(page.assets[0].uri, id);
+  assert.equal(page.assets[0].fileSize, 2048);
+  assert.equal(page.hasNextPage, false);
+});
+
+test("only the active iOS device video resolves its playable original", async () => {
+  const { service, state } = setup("ios");
+  const uri = await service.getPlayableUri({ id: "ph://video/L0/001", uri: "ph://video/L0/001", source: "device" });
+  assert.equal(uri, "file://resolved-video.mov");
+  assert.deepEqual(state.uriCalls, ["ph://video/L0/001"]);
+  assert.equal(await service.getPlayableUri({ id: "demo", uri: "https://example.com/video.mp4", source: "demo" }), "https://example.com/video.mp4");
+  assert.equal(state.uriCalls.length, 1);
+});
+
+test("iOS picker local identifiers match ph:// original IDs and respect media type", () => {
+  const { service } = setup("ios");
+  const asset = { id: "ph://ABC/L0/001", uri: "ph://ABC/L0/001", source: "device", mediaType: "photo" };
+  assert.deepEqual(plain(service.selectOriginals([asset], [{ assetId: "ABC/L0/001", type: "image" }])), [asset]);
+  assert.equal(service.selectOriginals([asset], [{ assetId: "ABC/L0/001", type: "video" }]).length, 0);
+  assert.equal(service.selectOriginals([{ ...asset, source: "demo" }], [{ assetId: "ABC/L0/001" }]).length, 0);
+});
+
+test("Android category permissions expose authorized photos when videos are denied", async () => {
+  const { service, state, permissions } = setup();
+  permissions.granted = false;
+  permissions.accessPrivileges = "none";
+  state.categoryPermissions = { photo: true, video: false };
+  const result = await service.getPermissions();
+  assert.deepEqual(plain(result.allowedMediaTypes), ["photo"]);
+  assert.deepEqual(plain(state.permissionCalls), [[false, ["photo", "video"]], [false, ["photo"]], [false, ["video"]]]);
+});
+
 test("Android 10 and older cannot enter the SDK filesystem deletion path", async () => {
   for (const version of [28, 29]) {
     const { service, state } = setup("android", version);
@@ -456,14 +532,15 @@ test("does not report deletion success before native confirmation completes", as
   assert.deepEqual(state.haptics, ["success"]);
 });
 
-test("native cancellation/failure retains the selection and never emits success feedback", async () => {
+test("Android system refusal retains the selection and never emits success feedback", async () => {
   const { service, state } = setup();
   state.deleteResult = async () => {
-    throw new Error("User denied native deletion");
+    throw new Error("User didn't grant write permission to requested files.");
   };
   const result = await service.deleteAssets([deviceAsset("photo")]);
   assert.equal(result.success, false);
   assert.equal(result.cancelled, true);
+  assert.match(result.error, /Deletion was cancelled/);
   assert.deepEqual(plain(result.deletedIds), []);
   assert.deepEqual(state.haptics, []);
   assert.deepEqual(plain(await service.deleteAssets([])), {
@@ -473,6 +550,83 @@ test("native cancellation/failure retains the selection and never emits success 
     bytesReclaimed: 0,
   });
   assert.equal(state.deleted.length, 1);
+});
+
+test("iOS PhotoKit cancellation is distinct from permission and system failures", async () => {
+  for (const [os, message, cancelled] of [
+    ["ios", "The operation couldn’t be completed. (PHPhotosErrorDomain error 3072.)", true],
+    ["ios", "The operation couldn’t be completed. (PHPhotosErrorDomain error 3311.)", false],
+    ["android", "Missing media permission", false],
+    ["android", "Activity is unavailable", false],
+  ]) {
+    const { service, state } = setup(os);
+    state.deleteResult = async () => { throw new Error(message); };
+    const result = await service.deleteAssets([deviceAsset("photo")]);
+    assert.equal(result.cancelled, cancelled);
+    assert.equal(result.success, false);
+    assert.deepEqual(plain(result.deletedIds), []);
+    assert.equal(result.bytesReclaimed, 0);
+    assert.deepEqual(state.haptics, []);
+  }
+});
+
+test("revoked access or a missing original prevents the system deletion request", async () => {
+  for (const os of ["android", "ios"]) {
+    const { service, state, permissions } = setup(os);
+    permissions.granted = false;
+    permissions.accessPrivileges = "none";
+    let result = await service.deleteAssets([deviceAsset("photo")]);
+    assert.equal(result.cancelled, false);
+    assert.match(result.error, /Photo access has changed/);
+    assert.deepEqual(state.deleted, []);
+    if (os === "ios") {
+      permissions.granted = true;
+      state.assetTypes.set("photo", new Error("Original not found"));
+      result = await service.deleteAssets([deviceAsset("photo")]);
+      assert.equal(result.success, false);
+      assert.equal(result.cancelled, false);
+      assert.deepEqual(state.deleted, []);
+    }
+  }
+});
+
+test("photo-only access cannot delete a previously loaded video", async () => {
+  const { service, state, permissions } = setup();
+  permissions.granted = false;
+  permissions.accessPrivileges = "none";
+  state.categoryPermissions = { photo: true, video: false };
+  const result = await service.deleteAssets([{ ...deviceAsset("video"), mediaType: "video" }]);
+  assert.match(result.error, /no longer authorized/);
+  assert.deepEqual(state.deleted, []);
+});
+
+test("large Android reviews stop on cancellation and report only earlier approved batches", async () => {
+  const { service, state } = setup("android", 36);
+  const assets = Array.from({ length: 2002 }, (_, n) => deviceAsset(String(n), 10));
+  state.deleteResult = async () => {
+    if (state.deleted.length === 2) throw new Error("User didn't grant write permission to requested files.");
+  };
+  const result = await service.deleteAssets(assets);
+  assert.deepEqual(state.deleted.map((batch) => batch.length), [2000, 2]);
+  assert.equal(result.success, false);
+  assert.equal(result.cancelled, true);
+  assert.deepEqual(plain(result.deletedIds), assets.slice(0, 2000).map((asset) => asset.id));
+  assert.equal(result.bytesReclaimed, 20000);
+  assert.match(result.error, /2000 items were deleted in earlier approved batches/);
+});
+
+test("only one system deletion request may be open at a time", async () => {
+  const { service, state } = setup();
+  let approve;
+  state.deleteResult = () => new Promise((resolve) => { approve = resolve; });
+  const first = service.deleteAssets([deviceAsset("first")]);
+  for (let attempt = 0; attempt < 10 && !approve; attempt++)
+    await new Promise((resolve) => setImmediate(resolve));
+  const second = await service.deleteAssets([deviceAsset("second")]);
+  assert.match(second.error, /already open/);
+  assert.equal(state.deleted.length, 1);
+  approve();
+  assert.equal((await first).success, true);
 });
 
 test("haptic failure cannot turn a completed native deletion into a reported failure", async () => {
@@ -507,13 +661,14 @@ test("demo, unknown-source and mixed selections cannot invoke native deletion", 
   assert.deepEqual(state.deleted, []);
 });
 
-test("demo bookmarks never migrate from or overwrite device bookmarks", async () => {
+test("legacy sample bookmarks never migrate into device bookmarks", async () => {
   const { service, state } = setup();
   state.storage.set("@luma_native_bookmarks", '["personal-photo"]');
-  assert.deepEqual(plain(await service.getBookmarks("demo")), []);
-  await service.saveBookmarks(["sample-photo"], "demo");
+  state.storage.set("@luma_demo_bookmarks_v2", '["sample-photo"]');
   assert.deepEqual(plain(await service.getBookmarks()), ["personal-photo"]);
-  assert.deepEqual(plain(await service.getBookmarks("demo")), ["sample-photo"]);
+  await service.saveBookmarks(["device-photo"]);
+  assert.deepEqual(plain(await service.getBookmarks()), ["device-photo"]);
+  assert.equal(state.storage.get("@luma_demo_bookmarks_v2"), '["sample-photo"]');
 });
 
 test("web never evaluates the native gallery module for permission or loading attempts", async () => {
@@ -521,6 +676,11 @@ test("web never evaluates the native gallery module for permission or loading at
   await assert.rejects(service.getPermissions(), /Android or iOS/);
   await assert.rejects(service.requestPermissions(), /Android or iOS/);
   await assert.rejects(service.getAssets(), /Android or iOS/);
+  const deletion = await service.deleteAssets([deviceAsset("photo")]);
+  assert.equal(deletion.success, false);
+  assert.equal(deletion.cancelled, false);
+  assert.match(deletion.error, /Use the native app/);
+  assert.deepEqual(state.deleted, []);
   assert.deepEqual(state.permissionCalls, []);
   assert.deepEqual(state.queries, []);
   assert.ok(!state.required.includes("expo-media-library"));

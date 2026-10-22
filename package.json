@@ -10,6 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "expo:start": "npm --prefix expo-project run start",
+    "expo:start:clean": "npm --prefix expo-project run start:clean",
     "expo:android": "npm --prefix expo-project run android",
     "expo:ios": "npm --prefix expo-project run ios"
   },

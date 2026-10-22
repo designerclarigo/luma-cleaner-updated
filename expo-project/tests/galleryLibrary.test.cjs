@@ -20,7 +20,6 @@ vm.runInNewContext(
 );
 const { GalleryLibrary } = moduleObject.exports;
 const plain = (value) => JSON.parse(JSON.stringify(value));
-const sample = { id: "demo-photo", source: "demo" };
 const real = { id: "device-photo", source: "device" };
 const full = { granted: true, accessPrivileges: "all", canAskAgain: true };
 function setup(platform = "android") {
@@ -42,7 +41,7 @@ function setup(platform = "android") {
   return {
     driver,
     calls,
-    gallery: new GalleryLibrary(driver, platform, [sample]),
+    gallery: new GalleryLibrary(driver, platform),
   };
 }
 
@@ -94,18 +93,14 @@ test("web reports native gallery unavailable without invoking native APIs", asyn
   assert.deepEqual(plain(gallery.getSnapshot().media), []);
 });
 
-test("only an explicit demo action loads samples; returning to device never keeps them", async () => {
-  const { gallery, driver } = setup();
-  gallery.useDemo();
-  assert.equal(gallery.getSnapshot().mode, "demo");
-  assert.deepEqual(plain(gallery.getSnapshot().media), [sample]);
-  driver.getPermissions = async () => ({ granted: false, canAskAgain: true });
-  await gallery.load();
+test("sample mode has no entry point; device galleries start empty", () => {
+  const { gallery } = setup();
+  assert.equal(typeof gallery.useDemo, "undefined");
   assert.equal(gallery.getSnapshot().mode, "device");
   assert.deepEqual(plain(gallery.getSnapshot().media), []);
 });
 
-test("a stale native response cannot replace an explicitly selected demo gallery", async () => {
+test("a stale native response cannot replace a newer permission denial", async () => {
   const { gallery, driver } = setup();
   let finish;
   let entered;
@@ -119,11 +114,13 @@ test("a stale native response cannot replace an explicitly selected demo gallery
     });
   const loading = gallery.load();
   await started;
-  gallery.useDemo();
+  driver.getPermissions = async () => ({ granted: false, canAskAgain: false });
+  await gallery.load();
   finish({ assets: [real], hasNextPage: false });
   await loading;
-  assert.equal(gallery.getSnapshot().mode, "demo");
-  assert.deepEqual(plain(gallery.getSnapshot().media), [sample]);
+  assert.equal(gallery.getSnapshot().mode, "device");
+  assert.equal(gallery.getSnapshot().status, "permission");
+  assert.deepEqual(plain(gallery.getSnapshot().media), []);
 });
 
 test("supports limited access, explicit permission requests and pagination without duplicates", async () => {
@@ -218,4 +215,58 @@ test("a reload started before confirmed deletion cannot reintroduce deleted orig
   assert.equal(gallery.getSnapshot().status, "empty");
   assert.equal(gallery.getSnapshot().refreshing, false);
   assert.deepEqual(plain(gallery.getSnapshot().media), []);
+});
+
+test("first page becomes usable while the rest of a large gallery is loading", async () => {
+  const { gallery, driver } = setup();
+  let finish;
+  const requests = [];
+  driver.getAssets = async (options) => {
+    requests.push(options);
+    if (!options.after) return { assets: [real], hasNextPage: true, endCursor: "100" };
+    return new Promise((resolve) => { finish = resolve; });
+  };
+  const pending = gallery.load();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(gallery.getSnapshot().status, "ready");
+  assert.equal(gallery.getSnapshot().refreshing, true);
+  assert.deepEqual(plain(gallery.getSnapshot().media), [real]);
+  assert.ok(requests.every((options) => options.metadataOnly === true));
+  finish({ assets: [{ id: "second" }], hasNextPage: false });
+  await pending;
+  assert.equal(gallery.getSnapshot().media.length, 2);
+  assert.equal(gallery.getSnapshot().refreshing, false);
+});
+
+test("full-to-limited changes clear formerly authorized originals before querying", async () => {
+  const { gallery, driver } = setup();
+  await gallery.load();
+  driver.getPermissions = async () => ({ granted: true, canAskAgain: true, accessPrivileges: "limited" });
+  let finish;
+  driver.getAssets = () => new Promise((resolve) => { finish = resolve; });
+  const pending = gallery.load();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(gallery.getSnapshot().limited, true);
+  assert.deepEqual(plain(gallery.getSnapshot().media), []);
+  finish({ assets: [{ id: "selected" }], hasNextPage: false });
+  await pending;
+  assert.deepEqual(plain(gallery.getSnapshot().media.map((a) => a.id)), ["selected"]);
+});
+
+test("category-only Android access queries only authorized media and clears broader cached access", async () => {
+  const { gallery, driver } = setup();
+  await gallery.load();
+  driver.getPermissions = async () => ({ granted: false, canAskAgain: true, accessPrivileges: "none", allowedMediaTypes: ["video"] });
+  let finish;
+  let query;
+  driver.getAssets = (options) => { query = options; return new Promise((resolve) => { finish = resolve; }); };
+  const pending = gallery.load();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(gallery.getSnapshot().granted, true);
+  assert.deepEqual(plain(gallery.getSnapshot().media), []);
+  assert.deepEqual(plain(query.mediaType), ["video"]);
+  finish({ assets: [{ id: "video", mediaType: "video" }], hasNextPage: false });
+  await pending;
+  assert.match(gallery.getSnapshot().message, /Showing videos only/);
+  assert.equal(gallery.getSnapshot().mode, "device");
 });

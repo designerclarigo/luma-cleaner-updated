@@ -39,7 +39,6 @@ interface Props {
   onStart: (items: MediaItem[], title: string, key?: string) => void;
   onResume: () => void;
   onAccess: () => void;
-  onDemo: () => void;
   onRefresh: () => void;
 }
 export function NativeHomeScreen({
@@ -53,7 +52,6 @@ export function NativeHomeScreen({
   onStart,
   onResume,
   onAccess,
-  onDemo,
   onRefresh,
 }: Props) {
   const [tab, setTab] = useState("months"),
@@ -217,9 +215,7 @@ export function NativeHomeScreen({
           <View style={ui.between}>
             <Text style={[ui.caption, { fontWeight: "600" }]}>
               {media.length} media items ·{" "}
-              {gallery.mode === "demo"
-                ? "Sample library"
-                : gallery.limited
+              {gallery.limited
                   ? "Selected photos"
                   : "Your library"}
             </Text>
@@ -240,8 +236,7 @@ export function NativeHomeScreen({
               </Text>
             </Pressable>
           </View>
-          {gallery.mode !== "demo" &&
-            (gallery.status !== "ready" || gallery.message) && (
+          {(gallery.status !== "ready" || gallery.message) && (
               <Card style={{ backgroundColor: c.lightMint }}>
                 <Text style={{ fontWeight: "700" }}>
                   {gallery.status === "loading"
@@ -251,25 +246,28 @@ export function NativeHomeScreen({
                       : "Your gallery, on your terms"}
                 </Text>
                 <Text style={ui.caption}>{gallery.message}</Text>
-                {gallery.status !== "loading" && (
+                {gallery.status !== "loading" && !gallery.refreshing && (
                   <>
                     <Button
                       title={
-                        gallery.limited
+                        gallery.status === "unsupported"
+                          ? "Use the native app"
+                          : gallery.limited
                           ? "Manage selected photos"
                           : !gallery.canAskAgain && !gallery.granted
                             ? "Open device Settings"
                             : gallery.status === "error" ||
                                 gallery.status === "empty"
                               ? "Retry gallery"
-                              : "Connect gallery"
+                              : gallery.granted
+                                ? "Manage photo access"
+                                : "Connect gallery"
                       }
-                      onPress={onAccess}
-                    />
-                    <Button
-                      title="Try sample photos · Demo mode"
-                      tone="white"
-                      onPress={onDemo}
+                      onPress={
+                        !gallery.limited && (gallery.status === "error" || gallery.status === "empty")
+                          ? onRefresh
+                          : onAccess
+                      }
                     />
                   </>
                 )}
@@ -316,9 +314,7 @@ export function NativeHomeScreen({
                   >
                     {disk
                       ? `${Math.round(((disk.total - disk.free) / disk.total) * 100)}% Used`
-                      : gallery.mode === "demo"
-                        ? "Sample library"
-                        : "Photo library"}
+                      : "Photo library"}
                   </Text>
                   <Text style={{ color: "#D0DCD0", fontSize: 10 }}>
                     {disk
@@ -663,7 +659,7 @@ export function NativeHomeScreen({
           detail={
             filter === "Completed"
               ? "Completed collections appear here after you review their media."
-              : "Connect your library or choose demo mode to explore Luma."
+              : "Connect your photo library to see your photos and videos."
           }
         />
       }

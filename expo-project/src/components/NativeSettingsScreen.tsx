@@ -55,11 +55,11 @@ const questions = [
   ],
   [
     "Where is my progress saved?",
-    "Decisions, undo history, bookmarks, settings and completed sessions are saved locally. Demo activity uses a separate library. Uninstalling the app or clearing its data removes local progress.",
+    "Decisions, undo history, bookmarks, settings and completed sessions are saved locally. Uninstalling the app or clearing its data removes local progress.",
   ],
   [
-    "What does Demo mode do?",
-    "Demo mode uses sample images and videos downloaded from public media hosts. Its deletions and storage savings are simulated. It never silently replaces a failed device gallery and cannot delete device media.",
+    "Can I use my gallery in a browser?",
+    "Use the native app for Android or iOS to connect your device library and request system-confirmed deletion. Luma does not load sample photos or simulate gallery access in a browser.",
   ],
 ];
 export function NativeSettingsScreen({
@@ -106,9 +106,7 @@ export function NativeSettingsScreen({
       .slice(0, 2)
       .toUpperCase();
   const permission =
-    saved.mode === "demo"
-      ? "Demo library"
-      : gallery.limited
+    gallery.limited
         ? "Selected photos"
         : gallery.granted
           ? "Gallery connected"
@@ -306,7 +304,7 @@ export function NativeSettingsScreen({
                 Reset cleanup progress
               </Text>
               <Text style={ui.caption}>
-                Clear the current {saved.mode === "demo" ? "demo" : "device"}{" "}
+                Clear the current device{" "}
                 library’s progress, bookmarks and statistics. This does not
                 delete any media.
               </Text>
@@ -400,9 +398,7 @@ export function NativeSettingsScreen({
                 <Text style={{ fontWeight: "700" }}>Local profile</Text>
               </View>
               <Text style={ui.caption}>
-                {saved.mode === "demo"
-                  ? "Showing sample activity. Device statistics are saved separately."
-                  : "No account required. Your profile and personal cleanup history stay on this device."}
+                No account required. Your profile and personal cleanup history stay on this device.
               </Text>
             </Card>
           </>
@@ -503,12 +499,8 @@ export function NativeSettingsScreen({
                   "Your name, settings, bookmarks, decisions and session history are stored on this device. Clearing app data or uninstalling removes these records.",
                 ],
                 [
-                  "Explicit sample mode",
-                  "Sample photos and videos load from Unsplash and public video hosts over the internet. Their providers may receive ordinary connection information. Sample progress and device progress are kept separate.",
-                ],
-                [
                   "Permissions you control",
-                  "You can change photo access in device Settings. Limited access may hide media; Luma retains its saved bookmarks and progress. No access is required to explore the explicit demo.",
+                  "You can change photo access in device Settings. Limited access may hide media; Luma retains its saved bookmarks and progress. Only authorized originals appear in your gallery.",
                 ],
               ].map(([title, text]) => (
                 <View key={title} style={{ gap: 7, marginBottom: 12 }}>

@@ -1,5 +1,6 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Modal,
   Pressable,
   ScrollView,
@@ -20,6 +21,7 @@ import Animated, {
   withRepeat,
   withTiming,
   cancelAnimation,
+  runOnJS,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import {
@@ -49,7 +51,7 @@ const scenes = [
     tag: "01. Smart Stack",
     title: "Your memories. Less clutter.",
     subtitle:
-      "Scattered snapshots, accidental receipts, and burst duplicates organize into neat, calm monthly card stacks.",
+      "Find your photos and videos in calm monthly stacks. Start with one collection, at your own pace.",
     footer: "Your originals stay right where they belong.",
   },
   {
@@ -214,7 +216,7 @@ function IllustrationCard({
       ) : (
         <Camera size={32} color={c.coral} />
       )}
-      <Text style={ui.caption}>
+      <Text allowFontScaling={false} style={ui.caption}>
         {["Receipt.png", "MorningRoast.jpg", "Burst_03.jpg"][index]}
       </Text>
     </Animated.View>
@@ -223,7 +225,8 @@ function IllustrationCard({
 function Scene({ step, height }: { step: number; height: number }) {
   const { reducedMotion } = useContext(Preferences),
     [spread, setSpread] = useState(false),
-    [cleaned, setCleaned] = useState(false);
+    [cleaned, setCleaned] = useState(false),
+    [sampleDecision, setSampleDecision] = useState<"keep" | "mark" | null>(null);
   const motion = useSharedValue(0),
     offset = useSharedValue(0);
   useEffect(() => {
@@ -241,11 +244,22 @@ function Scene({ step, height }: { step: number; height: number }) {
   }));
   const pan = Gesture.Pan()
     .enabled(step === 1)
+    .activeOffsetX([-12, 12])
+    .failOffsetY([-14, 14])
+    .onBegin(() => {
+      cancelAnimation(motion);
+      motion.value = 0;
+    })
     .onUpdate((e) => {
       offset.value = e.translationX;
     })
     .onEnd(() => {
-      offset.value = withSpring(0);
+      if (Math.abs(offset.value) > 20)
+        runOnJS(setSampleDecision)(offset.value > 0 ? "keep" : "mark");
+      offset.value = reducedMotion ? 0 : withSpring(0);
+    })
+    .onFinalize(() => {
+      offset.value = reducedMotion ? 0 : withSpring(0);
     });
   const photo =
     step === 0
@@ -348,7 +362,8 @@ function Scene({ step, height }: { step: number; height: number }) {
                 : "You’re in control"}
         </Text>
       </View>
-        <>
+        <View style={{ width: 260, height: 230, alignItems: "center", justifyContent: "center", transform: [{ scale: Math.min(1, (height - 92) / 230) }] }}
+          accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           {[0, 1, 2].map((i) => (
             <IllustrationCard
               key={i}
@@ -377,7 +392,7 @@ function Scene({ step, height }: { step: number; height: number }) {
               <Image
                 source={photo}
                 style={{ width: "100%", height: 130, borderRadius: 15 }}
-                contentFit="cover"
+                contentFit="contain"
               />
               <View
                 style={{
@@ -394,15 +409,16 @@ function Scene({ step, height }: { step: number; height: number }) {
                 }}
               >
                 <Heart size={10} fill={c.mint} color={c.mint} />
-                <Text style={{ color: c.mint, fontSize: 9, fontWeight: "800" }}>
+                <Text allowFontScaling={false} style={{ color: c.mint, fontSize: 9, fontWeight: "800" }}>
                   Cherished
                 </Text>
               </View>
               <View style={ui.between}>
-                <Text style={{ fontSize: 11, fontWeight: "700" }}>
+                <Text allowFontScaling={false} style={{ fontSize: 11, fontWeight: "700" }}>
                   {["YosemiteMist.jpg", "PineFog.jpg", "PacificCove.jpg"][step]}
                 </Text>
                 <Text
+                  allowFontScaling={false}
                   style={{ fontFamily: "Mono", fontSize: 10, color: c.emerald }}
                 >
                   4.2 MB
@@ -410,6 +426,7 @@ function Scene({ step, height }: { step: number; height: number }) {
               </View>
             </Animated.View>
           </GestureDetector>
+        </View>
           <View
             style={{ position: "absolute", bottom: 12, alignSelf: "center" }}
           >
@@ -418,6 +435,8 @@ function Scene({ step, height }: { step: number; height: number }) {
                 <IconButton
                   label="Try marking sample"
                   onPress={() => {
+                    setSampleDecision("mark");
+                    if (reducedMotion) return;
                     offset.value = withSpring(-60, {}, () => {
                       offset.value = withSpring(0);
                     });
@@ -426,12 +445,14 @@ function Scene({ step, height }: { step: number; height: number }) {
                 >
                   <X size={19} color={c.coral} />
                 </IconButton>
-                <Text style={{ fontSize: 10, color: c.muted }}>
-                  Mark ← → Keep
+                <Text accessibilityLiveRegion="polite" style={{ fontSize: 10, color: c.muted }}>
+                  {sampleDecision === "keep" ? "Sample kept" : sampleDecision === "mark" ? "Sample marked" : "Mark ← → Keep"}
                 </Text>
                 <IconButton
                   label="Try keeping sample"
                   onPress={() => {
+                    setSampleDecision("keep");
+                    if (reducedMotion) return;
                     offset.value = withSpring(60, {}, () => {
                       offset.value = withSpring(0);
                     });
@@ -461,9 +482,29 @@ function Scene({ step, height }: { step: number; height: number }) {
               />
             )}
           </View>
-        </>
     </LinearGradient>
   );
+}
+function StepProgress({ index, step, disabled, onPress }: {
+  index: number;
+  step: number;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { reducedMotion } = useContext(Preferences);
+  const filled = useSharedValue(index <= step ? 1 : 0);
+  useEffect(() => {
+    filled.value = reducedMotion ? Number(index <= step) : withTiming(Number(index <= step), { duration: 220 });
+  }, [index, step, reducedMotion, filled]);
+  const fillStyle = useAnimatedStyle(() => ({ opacity: filled.value }));
+  return <Pressable onPress={onPress} disabled={disabled} hitSlop={{ top: 6, bottom: 6 }}
+    accessibilityRole="button" accessibilityLabel={`Introduction ${index + 1} of ${scenes.length}`}
+    accessibilityState={{ selected: index === step, disabled }}
+    style={{ flex: 1, minHeight: 32, justifyContent: "center" }}>
+    <View style={{ height: 4, borderRadius: 2, backgroundColor: c.border, overflow: "hidden" }}>
+      <Animated.View style={[{ height: 4, borderRadius: 2, backgroundColor: c.forest }, fillStyle]} />
+    </View>
+  </Pressable>;
 }
 export function NativeOnboardingModal({
   visible,
@@ -471,34 +512,63 @@ export function NativeOnboardingModal({
   onRequestAccess,
 }: {
   visible: boolean;
-  onComplete: () => void;
+  onComplete: () => void | Promise<void>;
   onRequestAccess?: () => Promise<void>;
 }) {
   const [step, setStep] = useState(0),
-    [loading, setLoading] = useState(false),
+    [pendingAction, setPendingAction] = useState<"access" | "save" | null>(null),
     [notice, setNotice] = useState("");
-  const { height } = useWindowDimensions(),
+  const loading = pendingAction !== null;
+  const inFlight = useRef(false), mounted = useRef(true), content = useRef<ScrollView>(null);
+  const { height, fontScale } = useWindowDimensions(),
     insets = useSafeAreaInsets(),
     { reducedMotion } = useContext(Preferences);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (visible) {
       setStep(0);
       setNotice("");
     }
   }, [visible]);
-  const finish = async () => {
+  useEffect(() => {
+    if (visible) AccessibilityInfo.announceForAccessibility(`Introduction ${step + 1} of ${scenes.length}. ${scenes[step].title}`);
+  }, [visible, step]);
+  const goTo = (target: number) => {
+    if (inFlight.current) return;
+    setStep(Math.max(0, Math.min(scenes.length - 1, target)));
     setNotice("");
-    setLoading(true);
+    content.current?.scrollTo({ y: 0, animated: false });
+  };
+  const pagePan = Gesture.Pan().enabled(!loading).activeOffsetX([-24, 24]).failOffsetY([-12, 12])
+    .onEnd((event) => {
+      if (event.translationX < -50 || event.velocityX < -550) runOnJS(goTo)(step + 1);
+      else if (event.translationX > 50 || event.velocityX > 550) runOnJS(goTo)(step - 1);
+    });
+  const finish = async (connect: boolean) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setNotice("");
+    setPendingAction(connect ? "access" : "save");
+    let accessComplete = !connect;
     try {
-      if (onRequestAccess) await onRequestAccess();
-      else await NativeMediaService.requestPermissions();
-      onComplete();
-    } catch {
-      setNotice(
-        "Photo access is not available here. You can continue without access and connect your gallery later.",
-      );
+      if (connect) {
+        if (onRequestAccess) await onRequestAccess();
+        else {
+          const permission = await NativeMediaService.requestPermissions();
+          if (!permission.granted && permission.accessPrivileges !== "limited" && !permission.allowedMediaTypes?.length)
+            throw new Error("Photo access wasn’t allowed.");
+        }
+        accessComplete = true;
+        if (mounted.current) setPendingAction("save");
+      }
+      await onComplete();
+    } catch (error) {
+      if (mounted.current) setNotice(accessComplete
+        ? "Welcome progress couldn’t be saved. Please try again."
+        : `${error instanceof Error ? error.message : "Photo access is unavailable."} You can choose Not now and connect your gallery later.`);
     } finally {
-      setLoading(false);
+      inFlight.current = false;
+      if (mounted.current) setPendingAction(null);
     }
   };
   const active = scenes[step];
@@ -508,7 +578,7 @@ export function NativeOnboardingModal({
       visible={visible}
       animationType={reducedMotion ? "none" : "fade"}
       onRequestClose={() => {
-        if (!loading) onComplete();
+        if (!loading) { if (step > 0) goTo(step - 1); else void finish(false); }
       }}
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
@@ -523,8 +593,8 @@ export function NativeOnboardingModal({
               title="Skip"
               tone="cream"
               disabled={loading}
-              onPress={onComplete}
-              style={{ minHeight: 40, paddingHorizontal: 8 }}
+              onPress={() => void finish(false)}
+              style={{ minHeight: 48, paddingHorizontal: 8 }}
             />
           </View>
           <View
@@ -532,22 +602,15 @@ export function NativeOnboardingModal({
               flexDirection: "row",
               gap: 5,
               paddingHorizontal: 24,
-              paddingBottom: 8,
+              paddingBottom: 2,
             }}
           >
             {scenes.map((_, i) => (
-              <View
-                key={i}
-                style={{
-                  flex: 1,
-                  height: 4,
-                  borderRadius: 2,
-                  backgroundColor: i <= step ? c.forest : c.border,
-                }}
-              />
+              <StepProgress key={i} index={i} step={step} disabled={loading} onPress={() => goTo(i)} />
             ))}
           </View>
           <ScrollView
+            ref={content}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{
               flexGrow: 1,
@@ -563,27 +626,29 @@ export function NativeOnboardingModal({
               style={{ gap: privacy ? 20 : 14 }}
             >
               <Scene
-                step={step}
+                  key={step}
+                  step={step}
                 height={
                   privacy
                     ? Math.max(
                         244,
-                        Math.min(340, (height - insets.top - insets.bottom) * 0.38),
+                        Math.min(320, (height - insets.top - insets.bottom) * (fontScale > 1.3 ? 0.3 : 0.36)),
                       )
                     : Math.max(
                         240,
-                        Math.min(360, height - insets.top - insets.bottom - 360),
+                        Math.min(340, height - insets.top - insets.bottom - (fontScale > 1.3 ? 430 : 385)),
                       )
                 }
               />
-              <View style={{ paddingHorizontal: 4, gap: privacy ? 8 : 5 }}>
+              <GestureDetector gesture={pagePan}>
+              <View style={{ paddingHorizontal: 4, gap: 8 }}>
                 <Text style={[ui.eyebrow, { fontSize: 10 }]}>{active.tag}</Text>
                 <Text
                   accessibilityRole="header"
                   style={
                     privacy
                       ? privacyStyles.title
-                      : [ui.title, { lineHeight: 29 }]
+                      : [ui.title, { fontSize: 26, lineHeight: 33, letterSpacing: -0.8 }]
                   }
                 >
                   {privacy ? "Connect your\nphoto library." : active.title}
@@ -591,12 +656,13 @@ export function NativeOnboardingModal({
                 <Text
                   style={[
                     ui.caption,
-                    privacy ? privacyStyles.subtitle : { lineHeight: 20 },
+                    privacy ? privacyStyles.subtitle : { fontSize: 13, lineHeight: 21 },
                   ]}
                 >
                   {active.subtitle}
                 </Text>
               </View>
+              </GestureDetector>
               <View
                 style={[
                   ui.row,
@@ -634,7 +700,7 @@ export function NativeOnboardingModal({
               </View>
               {!!notice && (
                 <View
-                  accessibilityLiveRegion="polite"
+                  accessibilityLiveRegion="assertive"
                   style={privacyStyles.notice}
                 >
                   <Info size={16} color={c.coral} />
@@ -656,7 +722,7 @@ export function NativeOnboardingModal({
                 <IconButton
                   label="Previous onboarding step"
                   disabled={loading}
-                  onPress={() => setStep((s) => s - 1)}
+                  onPress={() => goTo(step - 1)}
                   style={{
                     backgroundColor: c.card,
                     minHeight: privacy ? 56 : 48,
@@ -672,14 +738,14 @@ export function NativeOnboardingModal({
               <Button
                 title={
                   privacy
-                    ? loading
-                      ? "Connecting…"
+                    ? pendingAction
+                      ? pendingAction === "access" ? "Connecting…" : "Saving…"
                       : "Connect photo library"
-                    : "Continue"
+                    : pendingAction ? "Saving…" : "Continue"
                 }
                 busy={loading}
                 onPress={() =>
-                  step === 3 ? void finish() : setStep((s) => s + 1)
+                  step === 3 ? void finish(true) : goTo(step + 1)
                 }
                 icon={
                   step === 3 ? (
@@ -703,7 +769,7 @@ export function NativeOnboardingModal({
                 title="Not now"
                 disabled={loading}
                 tone="cream"
-                onPress={onComplete}
+                onPress={() => void finish(false)}
                 style={{ minHeight: 44 }}
               />
             )}

@@ -204,23 +204,25 @@ test("bookmarks cannot be marked or submitted to deletion, including after a mar
   assert.equal(calls.length, 0);
   assert.equal(store.getSnapshot().saved.device.session.decisions.a, "keep");
 });
-test("demo simulation and reset preserve device bookmarks and statistics and never call native deletion", async () => {
-  const { store, calls } = setup();
+test("legacy demo installs reopen only the device library without simulated receipts", async () => {
+  const { store, data, calls } = setup();
+  const legacy = g.initialState();
+  legacy.mode = "demo";
+  legacy.device.bookmarks = ["device-favorite"];
+  legacy.demo.stats.totalDeleted = 12;
+  legacy.demo.stats.bytesReclaimed = 900;
+  legacy.deletionAttempt = { mode: "demo", sessionId: "old", ids: ["sample"] };
+  data.set(STATE_KEY, JSON.stringify(legacy));
   await store.load();
-  store.bookmark("device-favorite");
-  store.setMode("demo");
-  const sample = photo("sample", { source: "demo" });
-  store.start([sample], "Samples");
-  store.decide(sample.id, "delete");
-  await store.deleteSelected([sample], [sample.id]);
-  await store.finish();
+  assert.equal(store.getSnapshot().saved.mode, "device");
+  assert.equal(store.getSnapshot().saved.device.stats.totalDeleted, 0);
+  assert.equal(store.getSnapshot().saved.device.stats.bytesReclaimed, 0);
+  assert.equal(store.getSnapshot().saved.deletionAttempt, undefined);
+  assert.deepEqual(plain(store.getSnapshot().saved.device.bookmarks), ["device-favorite"]);
+  assert.throws(() => store.start([photo("sample", { source: "demo" })], "Samples"), /Only device gallery/);
+  assert.equal(store.getSnapshot().saved.device.session, null);
   assert.equal(calls.length, 0);
-  assert.equal(store.getSnapshot().saved.demo.stats.totalDeleted, 1);
-  await store.resetCurrentLibrary();
-  assert.equal(store.getSnapshot().saved.demo.stats.totalDeleted, 0);
-  assert.deepEqual(plain(store.getSnapshot().saved.device.bookmarks), [
-    "device-favorite",
-  ]);
+  assert.equal(store.getSnapshot().saved.demo.stats.totalDeleted, 12); // Archived, never displayed or merged.
 });
 test("a failed intent save prevents native deletion and can be retried", async () => {
   const { store, storage, calls } = setup();
@@ -348,7 +350,7 @@ test("missing native timestamps stay undated instead of inventing 1970 collectio
   );
 });
 
-test("old sample bookmarks migrate to matching preview assets without touching device IDs", async () => {
+test("legacy sample bookmark metadata stays archived without touching device IDs", async () => {
   const { data, repository } = setup();
   data.set("@luma_demo_bookmarks_v2", JSON.stringify(["m-1", "m-5", "m-7"]));
   data.set("@luma_native_bookmarks_v2", JSON.stringify(["m-1"]));
@@ -359,4 +361,32 @@ test("old sample bookmarks migrate to matching preview assets without touching d
     "demo-8",
   ]);
   assert.deepEqual(plain(state.device.bookmarks), ["m-1"]);
+});
+
+test("onboarding waits for durable storage and failed completion stays retryable", async () => {
+  const { store, storage, repository } = setup();
+  await store.load();
+  const original = storage.setItem;
+  let release;
+  storage.setItem = (key, value) => new Promise((resolve) => {
+    release = async () => { await original(key, value); resolve(); };
+  });
+  const pending = store.onboard();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(store.getSnapshot().saved.onboardingDone, false);
+  await release();
+  await pending;
+  const restarted = new LumaStore(repository, async () => { throw Error("No deletion"); });
+  await restarted.load();
+  assert.equal(restarted.getSnapshot().saved.onboardingDone, true);
+
+  const fresh = setup();
+  await fresh.store.load();
+  const write = fresh.storage.setItem;
+  fresh.storage.setItem = async () => { throw Error("Disk full"); };
+  await assert.rejects(fresh.store.onboard(), /Disk full/);
+  assert.equal(fresh.store.getSnapshot().saved.onboardingDone, false);
+  fresh.storage.setItem = write;
+  await fresh.store.onboard();
+  assert.equal(fresh.store.getSnapshot().saved.onboardingDone, true);
 });

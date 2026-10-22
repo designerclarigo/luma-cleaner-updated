@@ -1,6 +1,8 @@
 # Luma native app
 
-React Native + Expo SDK **57.0.30**, React Native **0.86.3**, React/React DOM **19.2.3**. Native components, Gesture Handler, Reanimated **4.5.1** and Worklets **0.10.1**; no WebView. Expo Router is **57.0.28** and TypeScript is **6.0.3**. The exact installed dependency graph is recorded in `package-lock.json`.
+Setup and platform limits: [native gallery setup](NATIVE_GALLERY_SETUP.md). Actual checks and device/build evidence: [native gallery checks](NATIVE_GALLERY_CHECKS.md). The original four-step onboarding and native visual design are preserved. Sample galleries and simulated deletion have been removed.
+
+React Native + Expo SDK **57.0.31**, React Native **0.86.3**, React/React DOM **19.2.3**. Native components, Gesture Handler, Reanimated **4.5.1** and Worklets **0.10.1**; no WebView. Expo Router is **57.0.29** and TypeScript is **6.0.3**. The exact installed dependency graph is recorded in `package-lock.json`.
 
 ## Run on Windows / PowerShell
 
@@ -10,7 +12,9 @@ npm.cmd ci
 npx.cmd expo start --dev-client --clear
 ```
 
-Install a newly built development client before scanning its QR code. It must include SDK 57's `ExpoMediaLibraryNext`, video, font, image-picker and system UI modules. Full gallery access requires this client or the standalone preview APK. Web has an honest unsupported-gallery state and a separately selected demo. Expo Go 57.0.9 on the connected Redmi does not include `ExpoMediaLibraryNext`.
+If Metro shows a stale `expo-modules-core/src/index.ts` resolution error after installing SDK packages, stop the existing server and run `npm.cmd run start:clean` from this folder (or `npm.cmd run expo:start:clean` from the repository root). Reload the open app/browser afterwards. The app's Metro file-map cache is isolated under `.expo/metro-file-map` and automatically changes when the lockfile or Node version changes.
+
+Install a newly built development client before scanning its QR code. It must include SDK 57's `ExpoMediaLibraryNext`, video, font, image-picker and system UI modules. Real gallery access requires this client or the standalone preview APK. Web shows **Use the native app** and an empty gallery. Use a development build for gallery acceptance testing.
 
 For Expo Go screen previews, use its launch target explicitly. A tunnel avoids local Wi-Fi routing or Windows firewall restrictions:
 
@@ -18,7 +22,7 @@ For Expo Go screen previews, use its launch target explicitly. A tunnel avoids l
 npx.cmd expo start --go --tunnel --port 8082 --max-workers 2
 ```
 
-Open the new QR code in Expo Go. If the client lacks `ExpoMediaLibraryNext`, Luma shows a development-build message and leaves Demo mode as an explicit choice; personal media is never silently replaced with samples.
+If Expo Go lacks `ExpoMediaLibraryNext`, Luma shows a development-build message. It never substitutes sample media or simulates gallery access.
 
 For web:
 
@@ -93,17 +97,17 @@ An export proves that JavaScript and assets bundle; it does not prove a compiled
 
 ## Data and deletion behavior
 
-- Device and demo libraries have separate bookmarks, statistics, decisions and sessions.
-- A left swipe only marks media. Review submits selected device originals through SDK 57 `Asset.delete`, awaiting the operating system’s confirmation on Android 11+ and iOS. Android 10 and older cannot enter the SDK's legacy direct-filesystem deletion path: deletion is disabled, review explains why, and Keep everything remains available. This also applies to the connected Android 10 Redmi. Luma never bypasses native confirmation.
+- Only the authorized device library is active. Legacy sample records stay archived and cannot appear in the gallery or inflate device statistics.
+- A left swipe only marks media. Review submits selected device originals through SDK 57 `Asset.delete`, awaiting the operating system’s result on Android 11+ and iOS. Android 10 and older cannot enter the SDK's legacy direct-filesystem deletion path: deletion is disabled, review explains why, and Keep everything remains available. Luma never bypasses native confirmation.
 - Bookmarked media cannot be submitted from Luma’s deletion queue. Another app or the system gallery can still change it.
 - Every decision, undo, setting and bookmark is saved through a serialized local storage queue. Keep-only sessions also update activity and streaks.
 - Deletion intent is saved before the native prompt. An interrupted prompt is reported as unverified; it does not create a success receipt.
 - Only confirmed deletions contribute to deleted totals. Reclaimed bytes include known sizes only; unavailable sizes are reported separately.
 - Similar/burst categories use metadata and filename hints for manual review. They are not an AI duplicate/blur verdict. Photos and Screenshots are disjoint in the distribution chart.
-- Native media change events refresh the gallery and albums, coalescing bursts and retaining the active card until the new catalog is ready. Refreshes wait while backgrounded, reviewing deletions, picking media or awaiting native confirmation. Returning from device Settings checks permissions again. Revoked access clears displayed originals and never opens demo mode.
+- Native media change events refresh the gallery and albums, coalescing bursts and retaining the active card until the new catalog is ready. Refreshes wait while backgrounded, picking media or awaiting native confirmation. Returning from device Settings checks permissions again, including with a review open. Revoked access clears displayed originals.
 - Limited access uses SDK 57 `presentPermissionsPicker` and only loads authorized assets. Date timestamps remain milliseconds; video durations are converted from milliseconds to display seconds. Android picker IDs resolve to original MediaStore content URIs, never picker cache copies.
 - Both the active swipe card and cards behind it explicitly use centered `contain` images. Portrait, landscape and square images retain their aspect ratio without cropping or stretching. Collection thumbnails keep the approved layout.
-- Demo media comes from the approved preview’s 55-item sample set. Sample deletions and savings are simulated, and remote samples require a connection. Personal gallery failures never load samples automatically.
+- No sample catalog, demo-mode action or simulated deletion exists in the native app. The older web preview also cannot seed media, grant native permissions or simulate a system deletion dialog.
 - Reset removes only the current library’s Luma records. It does not delete gallery media or call `AsyncStorage.clear()`.
 
 Generated Android files were inspected, backed up under `.repair-baseline/android-before-ui`, and regenerated from SDK 57. The existing ProGuard rules are retained. `android/`, `ios/`, `.expo/`, exports and repair backups are ignored. No Git commit can be created here until the folder is a Git repository.

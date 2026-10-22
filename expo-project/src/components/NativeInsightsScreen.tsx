@@ -15,11 +15,9 @@ import { colors as c } from "../theme/colors";
 export function NativeInsightsScreen({
   library,
   media,
-  demo,
 }: {
   library: LibraryState;
   media: MediaItem[];
-  demo: boolean;
 }) {
   const stats = library.stats,
     streak = currentStreak(stats),
@@ -66,7 +64,7 @@ export function NativeInsightsScreen({
             </Text>
           </View>
           <Text style={{ color: "#E6ECD9", fontSize: 10 }}>
-            {demo ? "Sample activity" : "Your activity"}
+            Your activity
           </Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 7 }}>
@@ -140,7 +138,7 @@ export function NativeInsightsScreen({
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
         {[
           {
-            label: demo ? "Simulated savings" : "Removed media size",
+            label: "Removed media size",
             value: formatBytes(stats.bytesReclaimed),
             Icon: HardDrive,
             color: c.forest,
@@ -207,9 +205,7 @@ export function NativeInsightsScreen({
         )}
       </View>
       <Text style={[ui.caption, { textAlign: "center" }]}>
-        {demo
-          ? "Demo statistics are separate from your device activity."
-          : "Your personal media and cleanup history stay on this device."}
+        Your personal media and cleanup history stay on this device.
       </Text>
     </Screen>
   );

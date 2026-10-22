@@ -53,7 +53,6 @@ import { LumaStore } from "../src/core/store";
 import { StateRepository } from "../src/core/persistence";
 import { collections, currentStreak, pendingIds } from "../src/core/gallery";
 import type { Collection, MediaItem } from "../src/core/model";
-import { DEMO_MEDIA_SEED } from "../src/data/demoMedia";
 
 const repository = new StateRepository(AsyncStorage);
 const store = new LumaStore(repository, (items) =>
@@ -62,7 +61,6 @@ const store = new LumaStore(repository, (items) =>
 const galleryController = new GalleryLibrary(
   NativeMediaService,
   Platform.OS,
-  DEMO_MEDIA_SEED,
 );
 export default function LumaApp() {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot),
@@ -95,7 +93,8 @@ export default function LumaApp() {
     [albumError, setAlbumError] = useState("");
   const [systemReduced, setSystemReduced] = useState(false),
     autoReview = useRef("");
-  const connectingFromDemo = useRef(false);
+  const requestingAccess = useRef(false);
+  const accessInFlight = useRef(false);
   const media: MediaItem[] = useMemo(
     () =>
       gallery.mode === saved.mode
@@ -114,9 +113,7 @@ export default function LumaApp() {
   );
   const albumCollections: Collection[] = useMemo(
     () =>
-      saved.mode === "demo"
-        ? collections(media, library, true)
-        : albumRows
+      albumRows
             .map((album) => {
               const ids = new Set(album.ids),
                 items = media.filter((i) => ids.has(i.id)),
@@ -137,8 +134,11 @@ export default function LumaApp() {
             .filter((i) => i.items.length),
     [saved.mode, albumRows, media, library, session],
   );
-  const demo = saved.mode === "demo",
-    pending = pendingIds(session),
+  useEffect(() => {
+    // Close an open detail/player when its original leaves the authorized catalog.
+    if (detail && !media.some((item) => item.id === detail.id)) setDetail(null);
+  }, [detail, media]);
+  const pending = pendingIds(session),
     marked = media.filter(
       (i) => pending.includes(i.id) && !library.bookmarks.includes(i.id),
     );
@@ -157,7 +157,7 @@ export default function LumaApp() {
     [],
   );
   let disk: { total: number; free: number } | null = null;
-  if (Platform.OS !== "web" && !demo) {
+  if (Platform.OS !== "web") {
     try {
       const total = Paths.totalDiskSpace,
         free = Paths.availableDiskSpace;
@@ -175,17 +175,17 @@ export default function LumaApp() {
   }, []);
   useEffect(() => {
     if (!ready) return;
-    if (demo) galleryController.useDemo();
-    else if (!connectingFromDemo.current) void galleryController.load();
-  }, [ready, demo]);
+    if (!requestingAccess.current) void galleryController.load();
+  }, [ready]);
   useEffect(() => {
     NativeMediaService.hapticsEnabled = saved.settings.hapticsEnabled;
   }, [saved.settings.hapticsEnabled]);
   useEffect(() => {
-    if (!ready || demo || !gallery.granted || gallery.status === "loading") {
+    if (!ready || !gallery.granted || gallery.status === "loading") {
       setAlbumRows([]);
       return;
     }
+    if (gallery.refreshing) return;
     let alive = true;
     setAlbumError("");
     void NativeMediaService.getAlbumCollections().then(
@@ -202,22 +202,22 @@ export default function LumaApp() {
     return () => {
       alive = false;
     };
-  }, [ready, demo, gallery.granted, gallery.status, gallery.media]);
+  }, [ready, gallery.granted, gallery.status, gallery.media, gallery.refreshing]);
   useEffect(() => {
     refreshQueue.setEnabled(
-      ready && !demo && saved.onboardingDone && Platform.OS !== "web",
+      ready && saved.onboardingDone && Platform.OS !== "web",
     );
-    refreshQueue.setBlocked(busy || onboard || importing || review || splash);
+    refreshQueue.setBlocked(busy || onboard || importing || splash || gallery.refreshing);
   }, [
     refreshQueue,
     ready,
-    demo,
     saved.onboardingDone,
     busy,
     onboard,
     importing,
     review,
     splash,
+    gallery.refreshing,
   ]);
   useEffect(() => {
     refreshQueue.setActive(AppState.currentState === "active");
@@ -228,7 +228,7 @@ export default function LumaApp() {
   }, [refreshQueue]);
   useEffect(() => () => refreshQueue.setEnabled(false), [refreshQueue]);
   useEffect(() => {
-    if (!ready || demo || !gallery.granted || Platform.OS === "web") return;
+    if (!ready || !gallery.granted || Platform.OS === "web") return;
     let alive = true;
     let unsubscribe: (() => void) | undefined;
     void NativeMediaService.subscribeToChanges(refreshQueue.request).then(
@@ -244,7 +244,7 @@ export default function LumaApp() {
       alive = false;
       unsubscribe?.();
     };
-  }, [ready, demo, gallery.granted, refreshQueue]);
+  }, [ready, gallery.granted, refreshQueue]);
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       if (busy) return true;
@@ -285,26 +285,23 @@ export default function LumaApp() {
     saved.settings.showReviewBeforeFinish,
   ]);
   const tell = (title: string, body: string) => setMessage({ title, body });
+  const nativeRequired = () => tell(
+    "Use the native app",
+    "Real gallery access and system deletion confirmation require Luma’s Android or iOS development build. Connect your device library there. No sample photos or simulated deletions are available.",
+  );
   const access = async () => {
+    if (accessInFlight.current) return;
+    accessInFlight.current = true;
     try {
-      if (demo) {
-        connectingFromDemo.current = true;
-        store.setMode("device");
-        setSessionOpen(false);
-      }
       if (Platform.OS === "web") {
-        await galleryController.load();
-        tell(
-          "Use the native app",
-          "Real gallery access and system deletion confirmation require the Android or iOS app. Demo mode is available separately.",
-        );
+        nativeRequired();
         return;
       }
-      if (gallery.limited && !demo) {
+      if (gallery.limited) {
         await NativeMediaService.manageLimitedAccess();
         await galleryController.load();
         return;
-      } else if (!gallery.canAskAgain && !gallery.granted) {
+      } else if ((!gallery.canAskAgain && !gallery.granted) || gallery.granted) {
         await Linking.openSettings();
         return;
       }
@@ -312,7 +309,7 @@ export default function LumaApp() {
     } catch (error) {
       tell("Photo access", String(error));
     } finally {
-      connectingFromDemo.current = false;
+      accessInFlight.current = false;
     }
   };
   const start = (items: MediaItem[], title: string, key?: string) => {
@@ -359,6 +356,7 @@ export default function LumaApp() {
     try {
       const deleted = await store.deleteSelected(media, ids);
       galleryController.removeDeleted(deleted);
+      if (deleted.length) refreshQueue.request();
       setReview(false);
       if (session && session.currentIndex >= session.mediaIds.length) {
         await store.finish();
@@ -366,19 +364,16 @@ export default function LumaApp() {
       }
     } catch (error) {
       setReviewError(
-        "Deletion was not confirmed. Your marks remain available for review. Unconfirmed deletions are excluded from statistics. " +
+        "Only confirmed deletions count toward statistics. Remaining marks are available for review. " +
           String(error),
       );
     }
   };
   const pick = async () => {
     try {
-      if (Platform.OS === "web" || demo) {
+      if (Platform.OS === "web") {
         setImporting(false);
-        tell(
-          "Choose device media",
-          "Connect the native device gallery to select personal media. Demo mode remains separate.",
-        );
+        nativeRequired();
         return;
       }
       const picked = await ImagePicker.launchImageLibraryAsync({
@@ -413,7 +408,7 @@ export default function LumaApp() {
   return (
     <Preferences.Provider value={preferences}>
       <SafeAreaView
-        style={{ flex: 1, backgroundColor: c.background }}
+        style={{ flex: 1, backgroundColor: splash ? "#FAF9F6" : c.background }}
         edges={["top", "bottom"]}
       >
         <View
@@ -468,45 +463,11 @@ export default function LumaApp() {
                   </Text>
                 </View>
               )}
-              {demo && (
-                <View
-                  style={[
-                    ui.between,
-                    {
-                      paddingHorizontal: 16,
-                      minHeight: 36,
-                      backgroundColor: c.lightMint,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{ color: c.forest, fontSize: 10, fontWeight: "700" }}
-                  >
-                    DEMO · Sample media, simulated savings
-                  </Text>
-                  <Button
-                    title="Exit demo"
-                    tone="mint"
-                    disabled={busy}
-                    onPress={() => {
-                      store.setMode("device");
-                      setSessionOpen(false);
-                      setReview(false);
-                    }}
-                    style={{
-                      minHeight: 32,
-                      paddingHorizontal: 10,
-                      borderRadius: 10,
-                    }}
-                  />
-                </View>
-              )}
               {result && !sessionOpen ? (
                 <NativeResultsScreen
                   result={result}
                   streak={currentStreak(library.stats)}
                   next={nextCollection}
-                  demo={demo}
                   onHome={() => {
                     store.clearResult();
                     setTab("clean");
@@ -666,14 +627,8 @@ export default function LumaApp() {
                       onStart={start}
                       onResume={() => setSessionOpen(true)}
                       onAccess={() => void access()}
-                      onDemo={() => {
-                        store.setMode("demo");
-                        setSessionOpen(false);
-                      }}
                       onRefresh={() =>
-                        demo
-                          ? galleryController.useDemo()
-                          : void galleryController.load()
+                        void galleryController.load()
                       }
                     />
                   )}
@@ -690,7 +645,6 @@ export default function LumaApp() {
                     <NativeInsightsScreen
                       media={media}
                       library={library}
-                      demo={demo}
                     />
                   )}
                   {tab === "settings" && (
@@ -736,10 +690,9 @@ export default function LumaApp() {
             items={marked}
             unavailableCount={pending.length - marked.length}
             error={reviewError}
-            demo={demo}
             busy={busy}
             deletionUnavailable={
-              demo ? "" : NativeMediaService.deletionUnavailableReason()
+              NativeMediaService.deletionUnavailableReason()
             }
             onClose={() => {
               setReview(false);
@@ -782,15 +735,6 @@ export default function LumaApp() {
                 onPress={() => {
                   setImporting(false);
                   void access();
-                }}
-              />
-              <Button
-                title="Explore sample photos · Demo mode"
-                tone="white"
-                onPress={() => {
-                  setImporting(false);
-                  store.setMode("demo");
-                  setTab("clean");
                 }}
               />
             </View>
@@ -837,27 +781,29 @@ export default function LumaApp() {
           </Sheet>
           <NativeOnboardingModal
             onRequestAccess={async () => {
-              if (Platform.OS === "web")
-                throw new Error("Use the native app for photo access.");
-              connectingFromDemo.current = true;
+              if (Platform.OS === "web") throw new Error("Use the native app. Connect your gallery in Luma for Android or iOS.");
+              requestingAccess.current = true;
               try {
-                store.setMode("device");
                 await galleryController.load(true);
+                const connected = galleryController.getSnapshot();
+                if (!connected.granted || connected.status === "error")
+                  throw new Error(connected.message || "Photo access is unavailable.");
               } finally {
-                connectingFromDemo.current = false;
+                requestingAccess.current = false;
               }
             }}
             visible={!splash && ready && (!saved.onboardingDone || onboard)}
-            onComplete={() => {
-              store.onboard();
+            onComplete={async () => {
+              await store.onboard();
               setOnboard(false);
-              if (!demo) void galleryController.load();
+              void galleryController.load();
             }}
           />
           {splash && (
             <NativeAnimatedSplash
               onFinish={() => setSplash(false)}
-              autoDismissMs={preferences.reducedMotion ? 1100 : 2400}
+              ready={ready || !!state.error}
+              autoDismissMs={preferences.reducedMotion ? 650 : 1700}
             />
           )}
         </View>
@@ -866,9 +812,7 @@ export default function LumaApp() {
   );
 }
 function permissionLabel(gallery: ReturnType<GalleryLibrary["getSnapshot"]>) {
-  return gallery.mode === "demo"
-    ? "explicit demo"
-    : gallery.limited
+  return gallery.limited
       ? "limited"
       : gallery.granted
         ? "granted"

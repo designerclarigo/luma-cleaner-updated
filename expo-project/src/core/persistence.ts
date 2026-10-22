@@ -2,7 +2,6 @@ import { emptyLibrary, initialState } from "./gallery";
 import type { LibraryState, SavedState, Session } from "./model";
 export const STATE_KEY = "@luma_native_state_v3";
 export const CATALOG_KEY = "@luma_native_catalog_v3";
-export const DEMO_KEY = "@luma_native_demo_catalog_v3";
 export interface StorageAdapter {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
@@ -103,7 +102,9 @@ export class StateRepository {
         ...base,
         ...value,
         schema: 3,
-        mode: value.mode === "demo" ? "demo" : "device",
+        // Retire demo mode without mixing its old receipts into device activity.
+        mode: "device",
+        deletionAttempt: value.deletionAttempt?.mode === "device" ? value.deletionAttempt : undefined,
         settings: { ...base.settings, ...value.settings },
         device: libraryFrom(value.device),
         demo: {

@@ -12,7 +12,6 @@ import {
 import type {
   CleanupLog,
   Decision,
-  LibraryMode,
   MediaItem,
   SavedState,
   Settings,
@@ -91,12 +90,14 @@ export class LumaStore {
     void this.update(fn(this.snapshot.saved)).catch(() => {});
   }
   retrySave = () => this.update(this.snapshot.saved).catch(() => {});
-  setMode(mode: LibraryMode) {
-    this.change((s) => ({ ...s, mode }));
-    this.publish({ result: null });
-  }
-  onboard() {
-    this.change((s) => ({ ...s, onboardingDone: true }));
+  async onboard(): Promise<void> {
+    if (!this.snapshot.ready || this.snapshot.busy)
+      throw new Error("Wait until saved progress is ready.");
+    if (this.snapshot.saved.onboardingDone) return;
+    const saved = { ...this.snapshot.saved, onboardingDone: true };
+    // Keep the welcome screen visible and retryable until completion is durable.
+    await this.repository.save(saved);
+    this.publish({ saved, error: "" });
   }
   name(name: string) {
     this.change((s) => ({
@@ -123,6 +124,8 @@ export class LumaStore {
   }
   start(items: MediaItem[], title: string, type = "collection", key = title) {
     if (!items.length) return;
+    if (items.some((item) => item.source !== "device"))
+      throw new Error("Only device gallery originals can start a cleanup session.");
     this.change((s) => ({
       ...s,
       [s.mode]: {
@@ -260,12 +263,9 @@ export class LumaStore {
           : undefined,
       });
       await this.repository.flush();
-      const result =
-        mode === "demo"
-          ? { deletedIds: chosen }
-          : chosen.length
-            ? await this.deleteDriver(items)
-            : { deletedIds: [] };
+      const result = chosen.length
+        ? await this.deleteDriver(items)
+        : { deletedIds: [] };
       const confirmed = confirmDeleted(
         this.snapshot.saved[mode],
         catalog,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FlatList, Pressable, ScrollView, View } from "react-native";
 import { Check, Info, ShieldCheck } from "lucide-react-native";
 import { colors as c } from "../theme/colors";
@@ -11,7 +11,6 @@ interface Props {
   items: MediaItem[];
   unavailableCount: number;
   error: string;
-  demo: boolean;
   busy: boolean;
   deletionUnavailable?: string;
   onClose: () => void;
@@ -22,7 +21,6 @@ export function NativeReviewSheet({
   items,
   unavailableCount,
   error,
-  demo,
   busy,
   deletionUnavailable,
   onClose,
@@ -30,13 +28,21 @@ export function NativeReviewSheet({
 }: Props) {
   const [selected, setSelected] = useState<string[]>([]),
     [inspected, setInspected] = useState<MediaItem | null>(null);
+  const wasVisible = useRef(false);
   const ids = items.map((i) => i.id).join("|");
   useEffect(() => {
-    setSelected(items.map((i) => i.id));
-  }, [ids]);
+    if (visible) {
+      const available = new Set(items.map((i) => i.id));
+      const opening = !wasVisible.current;
+      setSelected((previous) => opening
+        ? [...available]
+        : previous.filter((id) => available.has(id)));
+    }
+    wasVisible.current = visible;
+  }, [ids, visible]);
   useEffect(() => {
-    if (!visible) setInspected(null);
-  }, [visible]);
+    if (!visible || (inspected && !items.some((item) => item.id === inspected.id))) setInspected(null);
+  }, [visible, ids, inspected]);
   const close = () => {
     if (!busy) {
       if (inspected) setInspected(null);
@@ -52,9 +58,7 @@ export function NativeReviewSheet({
   ) : (
     <>
       <Text style={[ui.caption, { textAlign: "center", fontSize: 11 }]}>
-        {demo
-          ? "Demo simulation only. Your device gallery is untouched."
-          : deletionUnavailable ||
+        {deletionUnavailable ||
             "Your device will ask you to confirm deletion next."}
       </Text>
       <Button
@@ -65,12 +69,10 @@ export function NativeReviewSheet({
       />
       <Button
         title={
-          demo
-            ? `Simulate deletion (${selected.length})`
-            : `Delete selected (${selected.length})`
+          `Delete selected (${selected.length})`
         }
         tone="coral"
-        disabled={!selected.length || (!demo && !!deletionUnavailable)}
+        disabled={!selected.length || !!deletionUnavailable}
         busy={busy}
         onPress={() => onConfirm(selected)}
       />

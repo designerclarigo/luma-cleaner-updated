@@ -11,7 +11,6 @@ import { BottomNav, TabType } from './components/common/BottomNav';
 import { HomeScreen } from './components/home/HomeScreen';
 import { CleanupScreen } from './components/clean/CleanupScreen';
 import { ReviewSheet } from './components/clean/ReviewSheet';
-import { NativeDeleteDialog } from './components/clean/NativeDeleteDialog';
 import { ResultsScreen } from './components/clean/ResultsScreen';
 import { BookmarksScreen } from './components/bookmarks/BookmarksScreen';
 import { InsightsScreen } from './components/insights/InsightsScreen';
@@ -30,8 +29,6 @@ export default function App() {
 
   // Modal / Flow controls
   const [showReviewSheet, setShowReviewSheet] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [resultsData, setResultsData] = useState<{
     title: string;
@@ -110,8 +107,7 @@ export default function App() {
     if (deleteIds.length > 0 && settings.showReviewBeforeFinish) {
       setShowReviewSheet(true);
     } else if (deleteIds.length > 0) {
-      setPendingDeleteIds(deleteIds);
-      setShowDeleteDialog(true);
+      window.alert('Use the native app for system photo deletion confirmation.');
     } else {
       // Kept everything
       finalizeSession([], session);
@@ -122,23 +118,12 @@ export default function App() {
   const handleReviewConfirm = (finalIdsToDelete: string[]) => {
     setShowReviewSheet(false);
     if (finalIdsToDelete.length > 0) {
-      setPendingDeleteIds(finalIdsToDelete);
-      setShowDeleteDialog(true);
+      window.alert('Use the native app for system photo deletion confirmation.');
     } else if (activeSession) {
       finalizeSession([], activeSession);
     }
   };
 
-  // Native system dialog confirmed
-  const handleExecuteNativeDeletion = () => {
-    if (!activeSession) return;
-    const { deletedCount, bytesReclaimed } =
-      mediaService.deleteMediaBatch(pendingDeleteIds);
-
-    const keptCount = activeSession.mediaIds.length - deletedCount;
-    finalizeSession(pendingDeleteIds, activeSession, deletedCount, keptCount, bytesReclaimed);
-    setShowDeleteDialog(false);
-  };
 
   // Complete cleanup and show results
   const finalizeSession = (
@@ -247,11 +232,8 @@ export default function App() {
             bytesReclaimed={stats.bytesReclaimed}
             permissionState={settings.permissionState}
             onOpenSettings={() => setActiveTab('settings')}
-            onReplenishDemo={() => {
-              mediaService.replenishDemoMedia();
-              refreshAllState();
-            }}
-            onImportMedia={() => setShowImport(true)}
+            onNativeRequired={() => window.alert('Use the native app to connect your device photo library.')}
+            onImportMedia={() => window.alert('Use the native app to connect your device photo library.')}
           />
         );
     }
@@ -300,7 +282,7 @@ export default function App() {
         {/* Global Header with responsive logo and Import Media button */}
         {!activeSession && !showResults && (
           <Header
-            onImportMedia={() => setShowImport(true)}
+            onImportMedia={() => window.alert('Use the native app to connect your device photo library.')}
           />
         )}
 
@@ -335,18 +317,6 @@ export default function App() {
         />
       )}
 
-      {/* Native System Delete Confirmation Dialog */}
-      {showDeleteDialog && activeSession && (
-        <NativeDeleteDialog
-          itemCount={pendingDeleteIds.length}
-          totalBytes={pendingDeleteIds.reduce((sum, id) => {
-            const m = mediaService.getMediaById(id);
-            return sum + (m ? m.fileSize : 0);
-          }, 0)}
-          onConfirm={handleExecuteNativeDeletion}
-          onCancel={() => setShowDeleteDialog(false)}
-        />
-      )}
 
       {/* Settings Modal */}
       {showSettings && (

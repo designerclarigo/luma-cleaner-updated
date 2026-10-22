@@ -13,14 +13,12 @@ export function NativeResultsScreen({
   result,
   streak,
   next,
-  demo,
   onNext,
   onHome,
 }: {
   result: CleanupLog;
   streak: number;
   next?: Collection;
-  demo: boolean;
   onNext: () => void;
   onHome: () => void;
 }) {
@@ -98,7 +96,7 @@ export function NativeResultsScreen({
           </Text>
           <Text style={[ui.caption, { textAlign: "center" }]}>
             {result.sessionTitle} ·{" "}
-            {demo ? "Sample session complete" : "Session complete"}
+            Session complete
           </Text>
         </Animated.View>
         <Card style={{ padding: 16 }}>
@@ -112,7 +110,7 @@ export function NativeResultsScreen({
             }}
           >
             <Text style={{ color: "#DFE8D4", fontSize: 11 }}>
-              {demo ? "SIMULATED SPACE RECLAIMED" : "REMOVED MEDIA SIZE"}
+              REMOVED MEDIA SIZE
             </Text>
             <Text
               style={{
@@ -131,11 +129,9 @@ export function NativeResultsScreen({
                 ? "No files deleted. Your memories are kept."
                 : result.unknownSizeCount
                   ? `${result.unknownSizeCount} deleted item(s) had unavailable sizes and are excluded from this total.`
-                  : demo
-                    ? "Sample sizes only; no device storage changed."
-                    : "Known media sizes from confirmed deletions."}
+                  : "Known media sizes from confirmed deletions."}
             </Text>
-            {!demo && result.deletedCount > 0 && (
+            {result.deletedCount > 0 && (
               <Text
                 style={{ color: "#D9E1D4", textAlign: "center", fontSize: 11 }}
               >
